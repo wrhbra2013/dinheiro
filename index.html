@@ -11,13 +11,13 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <header class="header" onclick="window.location.href='../../index.html'">
+    <header class="header">
+        <button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">☰</button>
         <h1><span>💰</span> FinanceOrganizer</h1>
     </header>
     <div class="app-container">
         <aside class="sidebar">
             <div class="sidebar-header">
-                <a href="../../index.html" class="back-link">← Voltar</a>
                 <h2>💰 FinanceOrganizer</h2>
             </div>
             
@@ -37,12 +37,25 @@
                 <button class="nav-btn" data-view="relatorios" onclick="switchView('relatorios')">
                     <span>📋</span> Relatórios
                 </button>
+                <button class="nav-btn" data-view="orcamento" onclick="switchView('orcamento')">
+                    <span>📝</span> Orçamento
+                </button>
+                <button class="nav-btn" data-view="investimentos" onclick="switchView('investimentos')">
+                    <span>📈</span> Investimentos
+                </button>
             </nav>
 
             <div class="sidebar-footer">
                 <div class="balance-summary">
                     <span>Saldo Atual</span>
                     <strong id="header-balance">R$ 0,00</strong>
+                </div>
+                <div class="sidebar-actions">
+                    <button class="btn btn-sm btn-secondary" onclick="exportData()">📤 Exportar</button>
+                    <button class="btn btn-sm btn-secondary" onclick="document.getElementById('import-file').click()">📥 Importar</button>
+                    <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
+                    <button class="btn btn-sm btn-danger" onclick="resetData()">🔄 Resetar</button>
+                    <button class="btn btn-sm btn-secondary" onclick="openModal('api-config')">⚙️ API</button>
                 </div>
             </div>
         </aside>
@@ -99,6 +112,31 @@
                 <div class="card">
                     <h3>Gastos por Categoria</h3>
                     <div id="category-chart" class="chart-bars"></div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="card">
+                        <h3>📊 Análise 80/20</h3>
+                        <div id="pareto-analysis"></div>
+                    </div>
+                    <div class="card">
+                        <h3>🚦 Regra 1: Evitar Dívidas</h3>
+                        <div id="debt-warning"></div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="card">
+                        <h3>🧠 Regra 2: Consumo Consciente</h3>
+                        <div id="conscious-consumption"></div>
+                    </div>
+                    <div class="card">
+                        <h3>🙅 Regra 3: Aprender a Dizer Não</h3>
+                        <div id="say-no-section">
+                            <button class="btn btn-primary" onclick="openModal('nao')" style="margin-bottom:16px">+ Registrar "Não"</button>
+                            <div id="nao-list"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -206,6 +244,60 @@
                     <div id="monthly-comparison" class="chart-bars"></div>
                 </div>
             </div>
+
+            <!-- ORÇAMENTO -->
+            <div class="view" id="view-orcamento">
+                <div class="view-header">
+                    <h1>Orçamento</h1>
+                    <button class="btn btn-primary" onclick="openModal('orcamento')">+ Novo Item</button>
+                </div>
+
+                <div class="summary-box">
+                    <span>Total Orçado:</span>
+                    <strong id="total-orcamento">R$ 0,00</strong>
+                </div>
+
+                <div class="card">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Descrição</th>
+                                <th>Categoria</th>
+                                <th>Tipo</th>
+                                <th>Valor</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="orcamento-table"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- INVESTIMENTOS -->
+            <div class="view" id="view-investimentos">
+                <div class="view-header">
+                    <h1>Investimentos</h1>
+                    <button class="btn btn-primary" onclick="openModal('investimento')">+ Novo Investimento</button>
+                </div>
+
+                <div class="stats-grid" style="margin-bottom:24px">
+                    <div class="stat-card income">
+                        <div class="stat-info">
+                            <span class="stat-value" id="inv-total">R$ 0,00</span>
+                            <span class="stat-label">Total Investido</span>
+                        </div>
+                    </div>
+                    <div class="stat-card goals">
+                        <div class="stat-info">
+                            <span class="stat-value" id="inv-qtd">0</span>
+                            <span class="stat-label">Ativos</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="investimentos-list"></div>
+            </div>
         </main>
     </div>
 
@@ -283,6 +375,12 @@
                         <option value="outros">Outros</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="despesa-essencial" checked>
+                        <span>✅ Essencial (necessário)</span>
+                    </label>
+                </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('despesa')">Cancelar</button>
                     <button type="submit" class="btn btn-primary">Adicionar</button>
@@ -325,6 +423,155 @@
         </div>
     </div>
 
+    <!-- Modal Dizer Não -->
+    <div class="modal" id="modal-nao">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🙅 Dizer Não</h2>
+                <button class="modal-close" onclick="closeModal('nao')">&times;</button>
+            </div>
+            <form class="modal-body" onsubmit="addNao(event)">
+                <div class="form-group">
+                    <label>O que você recusou?</label>
+                    <input type="text" id="nao-desc" required placeholder="Ex: Cafeteria extra">
+                </div>
+                <div class="form-group">
+                    <label>Valor economizado</label>
+                    <input type="number" id="nao-valor" step="0.01" min="0" required placeholder="0,00">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('nao')">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Registrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal API Config -->
+    <div class="modal" id="modal-api-config">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚙️ Configuração da API</h2>
+                <button class="modal-close" onclick="closeModal('api-config')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>URL da API</label>
+                    <input type="text" id="api-url" placeholder="http://localhost:3000">
+                </div>
+                <div class="form-group">
+                    <label>Token</label>
+                    <input type="text" id="api-token" placeholder="Seu token de acesso">
+                </div>
+                <div class="form-group">
+                    <label>Projeto</label>
+                    <input type="text" id="api-project" placeholder="dinheiro">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="testApi()">🔌 Testar</button>
+                    <button type="button" class="btn btn-primary" onclick="saveApiConfig()">Salvar</button>
+                </div>
+                <div id="api-status" style="margin-top:12px;font-size:13px"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Novo Orçamento -->
+    <div class="modal" id="modal-orcamento">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Novo Item de Orçamento</h2>
+                <button class="modal-close" onclick="closeModal('orcamento')">&times;</button>
+            </div>
+            <form class="modal-body" onsubmit="addOrcamento(event)">
+                <div class="form-group">
+                    <label>Descrição</label>
+                    <input type="text" id="orc-desc" required placeholder="Ex: Aluguel">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Valor</label>
+                        <input type="number" id="orc-valor" step="0.01" min="0" required placeholder="0,00">
+                    </div>
+                    <div class="form-group">
+                        <label>Data</label>
+                        <input type="date" id="orc-data" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Categoria</label>
+                        <select id="orc-categoria">
+                            <option value="moradia">Moradia</option>
+                            <option value="alimentacao">Alimentação</option>
+                            <option value="transporte">Transporte</option>
+                            <option value="saude">Saúde</option>
+                            <option value="lazer">Lazer</option>
+                            <option value="educacao">Educação</option>
+                            <option value="investimento">Investimento</option>
+                            <option value="outros">Outros</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Tipo</label>
+                        <select id="orc-tipo">
+                            <option value="receita">Receita</option>
+                            <option value="despesa">Despesa</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('orcamento')">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Adicionar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Novo Investimento -->
+    <div class="modal" id="modal-investimento">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Novo Investimento</h2>
+                <button class="modal-close" onclick="closeModal('investimento')">&times;</button>
+            </div>
+            <form class="modal-body" onsubmit="addInvestimento(event)">
+                <div class="form-group">
+                    <label>Ticker</label>
+                    <div style="display:flex;gap:8px">
+                        <input type="text" id="inv-ticker" required placeholder="Ex: PETR4" style="flex:1;text-transform:uppercase">
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="buscarTicker()">🔍</button>
+                    </div>
+                </div>
+                <div id="ticker-info" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Quantidade</label>
+                        <input type="number" id="inv-qtd" step="1" min="1" required placeholder="100">
+                    </div>
+                    <div class="form-group">
+                        <label>Preço (R$)</label>
+                        <input type="number" id="inv-preco" step="0.01" min="0" required placeholder="25,50">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Data da Compra</label>
+                    <input type="date" id="inv-data" required>
+                </div>
+                <div class="form-group">
+                    <label>Comentários</label>
+                    <textarea id="inv-comentarios" rows="3" placeholder="Por que comprou? Análise..."></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('investimento')">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Adicionar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
+    <script src="js/api.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>
