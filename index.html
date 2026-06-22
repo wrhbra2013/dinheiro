@@ -538,9 +538,10 @@
             <form class="modal-body" onsubmit="addInvestimento(event)">
                 <div class="form-group">
                     <label>Ticker</label>
-                    <div style="display:flex;gap:8px">
-                        <input type="text" id="inv-ticker" required placeholder="Ex: PETR4" style="flex:1;text-transform:uppercase">
+                    <div style="display:flex;gap:8px;position:relative">
+                        <input type="text" id="inv-ticker" required placeholder="Ex: PETR4" style="flex:1;text-transform:uppercase" autocomplete="off">
                         <button type="button" class="btn btn-sm btn-secondary" onclick="buscarTicker()">🔍</button>
+                        <div id="ticker-suggestions" class="ticker-suggestions"></div>
                     </div>
                 </div>
                 <div id="ticker-info" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>

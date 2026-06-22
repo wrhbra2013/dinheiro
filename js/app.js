@@ -746,6 +746,8 @@ async function renderInvestimentos() {
 
     container.innerHTML = investimentosData.map(inv => {
         const totalInv = parseFloat(inv.quantidade) * parseFloat(inv.preco_compra);
+        const comentKey = `inv-coment-${inv._id}`;
+        const textKey = `inv-text-${inv._id}`;
         return `
             <div class="card" style="margin-bottom:16px">
                 <div style="display:flex;justify-content:space-between;align-items:center">
@@ -758,9 +760,30 @@ async function renderInvestimentos() {
                         <div style="font-size:12px;color:var(--text2)">${esc(inv.quantidade)} x ${formatCurrency(parseFloat(inv.preco_compra))}</div>
                     </div>
                 </div>
-                ${inv.comentarios ? `<div style="margin-top:12px;padding:12px;background:var(--bg3);border-radius:8px;font-size:13px;color:var(--text2)">💬 ${esc(inv.comentarios)}</div>` : ''}
+                <div style="margin-top:12px;padding:12px;background:var(--bg3);border-radius:8px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                        <span style="font-size:13px;font-weight:600;color:var(--text)">💬 Comentários</span>
+                        <button class="btn btn-sm btn-secondary" onclick="toggleComentarios(${inv._id})" id="${comentKey}-btn">${inv.comentarios ? 'Editar' : 'Adicionar'}</button>
+                    </div>
+                    <div id="${comentKey}-view" ${inv.comentarios ? '' : 'style="display:none"'}>
+                        <p style="margin:0;font-size:13px;color:var(--text2);white-space:pre-wrap">${esc(inv.comentarios)}</p>
+                    </div>
+                    <div id="${comentKey}-edit" style="display:none">
+                        <textarea id="${textKey}" rows="3" style="width:100%;box-sizing:border-box;resize:vertical">${esc(inv.comentarios || '')}</textarea>
+                        <div style="display:flex;gap:8px;margin-top:8px">
+                            <button class="btn btn-sm btn-primary" onclick="salvarComentarios(${inv._id})">💾 Salvar</button>
+                            <button class="btn btn-sm btn-secondary" onclick="cancelarComentarios(${inv._id})">Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="inv-extra-bar">
+                    <button class="inv-extra-btn" onclick="toggleInfoEmpresa(${inv._id}, '${esc(inv.ticker)}')">📋 Info</button>
+                    <button class="inv-extra-btn" onclick="toggleNoticias(${inv._id}, '${esc(inv.ticker)}')">📰 Notícias</button>
+                </div>
+                <div class="inv-extra-content" id="inv-info-${inv._id}"></div>
+                <div class="inv-extra-content" id="inv-news-${inv._id}"></div>
                 <div style="margin-top:12px;display:flex;gap:8px">
-                    <button class="btn btn-sm btn-secondary" onclick="buscarTickerExistente('${esc(inv.ticker)}')">🔍 Pesquisar</button>
+                    <button class="btn btn-sm btn-secondary" onclick="buscarTickerExistente('${esc(inv.ticker)}')">🔍 Cotação</button>
                     <button class="btn btn-sm btn-danger" onclick="deleteInvestimento(${inv._id})">🗑️</button>
                 </div>
             </div>
@@ -801,6 +824,166 @@ async function deleteInvestimento(id) {
         renderInvestimentos();
     } catch (err) {
         alert('Erro ao excluir: ' + err.message);
+    }
+}
+
+function toggleComentarios(id) {
+    const view = document.getElementById(`inv-coment-${id}-view`);
+    const edit = document.getElementById(`inv-coment-${id}-edit`);
+    const btn = document.getElementById(`inv-coment-${id}-btn`);
+    if (!edit) return;
+    if (edit.style.display === 'none') {
+        view.style.display = 'none';
+        edit.style.display = 'block';
+        btn.textContent = 'Cancelar';
+    } else {
+        cancelarComentarios(id);
+    }
+}
+
+function cancelarComentarios(id) {
+    const view = document.getElementById(`inv-coment-${id}-view`);
+    const edit = document.getElementById(`inv-coment-${id}-edit`);
+    const btn = document.getElementById(`inv-coment-${id}-btn`);
+    if (!edit) return;
+    edit.style.display = 'none';
+    view.style.display = 'block';
+    btn.textContent = view.querySelector('p')?.textContent ? 'Editar' : 'Adicionar';
+}
+
+async function salvarComentarios(id) {
+    const textarea = document.getElementById(`inv-text-${id}`);
+    if (!textarea) return;
+    const comentarios = textarea.value.replace(/<[^>]*>/g, '').trim();
+    try {
+        await API.update('investimentos', id, { comentarios });
+        renderInvestimentos();
+    } catch (err) {
+        alert('Erro ao salvar comentários: ' + err.message);
+    }
+}
+
+// ============= AUTOCOMPLETE TICKER =============
+let tickerTimeout = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    const input = document.getElementById('inv-ticker');
+    if (!input) return;
+    input.addEventListener('input', () => {
+        clearTimeout(tickerTimeout);
+        const q = input.value.trim().toUpperCase();
+        if (q.length < 2) { document.getElementById('ticker-suggestions').classList.remove('active'); return; }
+        tickerTimeout = setTimeout(() => buscarSugestoesTicker(q), 300);
+    });
+    input.addEventListener('blur', () => {
+        setTimeout(() => document.getElementById('ticker-suggestions').classList.remove('active'), 250);
+    });
+    input.addEventListener('focus', () => {
+        const q = input.value.trim().toUpperCase();
+        if (q.length >= 2) buscarSugestoesTicker(q);
+    });
+});
+
+async function buscarSugestoesTicker(q) {
+    const dropdown = document.getElementById('ticker-suggestions');
+    try {
+        const res = await fetch(`https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=8&newsCount=0`);
+        if (!res.ok) { dropdown.classList.remove('active'); return; }
+        const data = await res.json();
+        const quotes = (data.quotes || []).filter(item => item.symbol && item.symbol.endsWith('.SA'));
+        if (!quotes.length) { dropdown.classList.remove('active'); return; }
+        dropdown.innerHTML = quotes.map(q => {
+            const t = q.symbol.replace('.SA', '');
+            return `<div class="ticker-suggestion" data-ticker="${esc(t)}">
+                <strong>${esc(t)}</strong>
+                <span>${esc(q.shortname || q.longname || '')}</span>
+            </div>`;
+        }).join('');
+        dropdown.classList.add('active');
+        dropdown.querySelectorAll('.ticker-suggestion').forEach(el => {
+            el.addEventListener('mousedown', e => {
+                e.preventDefault();
+                const ticker = el.dataset.ticker;
+                document.getElementById('inv-ticker').value = ticker;
+                dropdown.classList.remove('active');
+                buscarTickerExistente(ticker);
+            });
+        });
+    } catch { dropdown.classList.remove('active'); }
+}
+
+// ============= INFO EMPRESA (brapi.dev) =============
+async function toggleInfoEmpresa(id, ticker) {
+    const div = document.getElementById(`inv-info-${id}`);
+    const newsDiv = document.getElementById(`inv-news-${id}`);
+    const btns = div.parentElement.querySelectorAll('.inv-extra-btn');
+    if (div.classList.contains('active')) {
+        div.classList.remove('active');
+        btns.forEach(b => b.classList.remove('active'));
+        return;
+    }
+    newsDiv.classList.remove('active');
+    btns.forEach(b => b.classList.remove('active'));
+    btns[0].classList.add('active');
+    div.classList.add('active');
+    if (!div.dataset.loaded) {
+        div.innerHTML = '<p style="color:var(--text2)">Carregando...</p>';
+        try {
+            const res = await fetch(`https://brapi.dev/api/quote/${ticker}?modules=summaryProfile`);
+            const data = await res.json();
+            const quote = data.results?.[0];
+            if (!quote) { div.innerHTML = '<p style="color:var(--warning)">Info não disponível</p>'; return; }
+            const p = quote.summaryProfile || {};
+            div.innerHTML = `
+                <p style="font-weight:600;margin-bottom:8px">${esc(quote.longName || quote.shortName || ticker)}</p>
+                ${p.sector ? `<p>🏭 Setor: ${esc(p.sector)}</p>` : ''}
+                ${p.industry ? `<p>📋 Indústria: ${esc(p.industry)}</p>` : ''}
+                ${quote.regularMarketPrice ? `<p>💰 Preço: R$ ${quote.regularMarketPrice.toFixed(2)}</p>` : ''}
+                ${quote.marketCap ? `<p>🏢 Valor de mercado: R$ ${(quote.marketCap / 1e9).toFixed(2)} bi</p>` : ''}
+                ${p.fullTimeEmployees ? `<p>👥 Funcionários: ${p.fullTimeEmployees.toLocaleString()}</p>` : ''}
+                ${p.website ? `<p>🌐 <a href="${esc(p.website)}" target="_blank">${esc(p.website)}</a></p>` : ''}
+                ${p.longBusinessSummary ? `<p style="margin-top:8px;color:var(--text2);font-size:12px;line-height:1.7">${esc(p.longBusinessSummary)}</p>` : ''}
+            `;
+        } catch { div.innerHTML = '<p style="color:var(--danger)">Erro ao carregar informações</p>'; }
+        div.dataset.loaded = '1';
+    }
+}
+
+// ============= NOTÍCIAS (Yahoo Finance) =============
+async function toggleNoticias(id, ticker) {
+    const div = document.getElementById(`inv-news-${id}`);
+    const infoDiv = document.getElementById(`inv-info-${id}`);
+    const btns = div.parentElement.querySelectorAll('.inv-extra-btn');
+    if (div.classList.contains('active')) {
+        div.classList.remove('active');
+        btns.forEach(b => b.classList.remove('active'));
+        return;
+    }
+    infoDiv.classList.remove('active');
+    btns.forEach(b => b.classList.remove('active'));
+    btns[1].classList.add('active');
+    div.classList.add('active');
+    if (!div.dataset.loaded) {
+        div.innerHTML = '<p style="color:var(--text2)">Carregando...</p>';
+        try {
+            const res = await fetch(`https://query1.finance.yahoo.com/v1/finance/search?q=${ticker}&newsCount=6`);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const data = await res.json();
+            const articles = data.news || [];
+            if (!articles.length) { div.innerHTML = '<p style="color:var(--warning)">Nenhuma notícia encontrada</p>'; return; }
+            div.innerHTML = articles.map(a => {
+                const date = a.providerPublishTime ? new Date(a.providerPublishTime * 1000).toLocaleDateString('pt-BR') : '';
+                const thumb = a.thumbnail?.resolutions?.[0]?.url;
+                return `<div style="display:flex;gap:10px;padding:10px;background:var(--bg);border-radius:8px;margin-bottom:8px">
+                    ${thumb ? `<img src="${esc(thumb)}" alt="" style="width:48px;height:48px;border-radius:6px;object-fit:cover;flex-shrink:0">` : ''}
+                    <div style="flex:1;min-width:0">
+                        <a href="${esc(a.link || '#')}" target="_blank" style="color:var(--text);text-decoration:none;font-weight:500;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.title)}</a>
+                        <div style="font-size:11px;color:var(--text2);margin-top:2px">${a.publisher ? esc(a.publisher) + ' • ' : ''}${date}</div>
+                    </div>
+                </div>`;
+            }).join('');
+        } catch { div.innerHTML = '<p style="color:var(--danger)">Erro ao carregar notícias</p>'; }
+        div.dataset.loaded = '1';
     }
 }
 
