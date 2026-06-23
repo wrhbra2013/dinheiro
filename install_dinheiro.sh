@@ -3,7 +3,7 @@ set -eu
 
 # ==============================================================
 # Instalação — API FinanceOrganizer (Docker + PostgreSQL)
-# Uso: sudo bash install_api.sh [uninstall]
+# Uso: sudo bash install_dinheiro.sh [uninstall]
 # ==============================================================
 
 SCRIPT_DIR="$(dirname "$0")"
@@ -15,7 +15,7 @@ info()  { printf "${GREEN}[INFO]${NC} %s\n" "$1"; }
 warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$1" >&2; }
 error() { printf "${RED}[ERRO]${NC} %s\n" "$1" >&2; exit 1; }
 
-[ "$(id -u)" -eq 0 ] || error "Execute como root: sudo bash install_api.sh"
+[ "$(id -u)" -eq 0 ] || error "Execute como root: sudo bash install_dinheiro.sh"
 
 
 # ---------------------------------------------------------------
@@ -91,7 +91,6 @@ PNAME=${PNAME:-dinheiro}
 
 INSTALL_DIR="/var/www/$PNAME"
 SRC_DIR="$INSTALL_DIR/src"
-FRONTEND_DIR="$INSTALL_DIR/frontend"
 
 echo "  Porta: $APP_PORT"
 echo "  Projeto: $PNAME"
@@ -101,12 +100,13 @@ echo "  Instalar em: $INSTALL_DIR"
 # ---------------------------------------------------------------
 # Diretórios
 # ---------------------------------------------------------------
-mkdir -p "$SRC_DIR" "$FRONTEND_DIR"
+mkdir -p "$SRC_DIR"
 
 
 # ---------------------------------------------------------------
 # .env
 # ---------------------------------------------------------------
+API_TOKEN=$(openssl rand -hex 32)
 cat > "$INSTALL_DIR/.env" <<ENVEOF
 PORT=$APP_PORT
 DB_HOST=db
@@ -114,6 +114,7 @@ DB_PORT=5432
 DB_NAME=${PNAME}
 DB_USER=postgres
 DB_PASS=wander
+API_TOKEN=${API_TOKEN}
 COMPOSE_PROJECT_NAME=${PNAME}
 ENVEOF
 chmod 600 "$INSTALL_DIR/.env"
@@ -168,30 +169,48 @@ app.use((req, res, next) => {
   next();
 });
 
-// Auto-create table on POST/PUT if it doesn't exist
-app.use(async (req, res, next) => {
-  if (req.method === 'OPTIONS') return next();
-  const table = req.params?.tabela;
-  if (!['POST', 'PUT'].includes(req.method) || !table || !/^[a-z][a-z0-9_]{0,63}$/.test(table)) return next();
+const API_TOKEN = process.env.API_TOKEN || '';
 
-  try {
-    const { rows } = await pool.query(
-      "SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname='public' AND tablename=$1)", [table]
-    );
-    if (rows[0].exists) return next();
-
-    const cols = Object.keys(req.body)
-      .filter(k => !['id', '_id', 'table', 'project'].includes(k))
-      .map(k => `"${k}" TEXT`);
-    if (!cols.length) return next();
-
-    await pool.query(`CREATE TABLE "${table}" (_id SERIAL PRIMARY KEY, ${cols.join(', ')})`);
-    console.log(`Tabela "${table}" criada`);
-  } catch (e) {
-    console.error('Erro ao criar tabela:', e.message);
+app.use((req, res, next) => {
+  if (req.path === '/' || req.path === '/health') return next();
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Bearer ') || auth.slice(7) !== API_TOKEN) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
   next();
 });
+
+async function tabelaExiste(tabela) {
+  const { rows } = await pool.query(
+    "SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname='public' AND tablename=$1)", [tabela]
+  );
+  return rows[0].exists;
+}
+
+async function garantirColunas(tabela, data) {
+  const chaves = Object.keys(data).filter(k => !['id', '_id', 'table', 'project'].includes(k));
+  if (!chaves.length) return;
+  const { rows } = await pool.query(
+    "SELECT column_name FROM information_schema.columns WHERE table_name=$1", [tabela]
+  );
+  const existentes = new Set(rows.map(r => r.column_name));
+  for (const col of chaves) {
+    if (!existentes.has(col)) {
+      await pool.query(`ALTER TABLE "${tabela}" ADD COLUMN "${col}" TEXT`);
+      console.log(`Coluna "${col}" criada em "${tabela}"`);
+    }
+  }
+}
+
+async function garantirTabela(tabela, data) {
+  if (await tabelaExiste(tabela)) return;
+  const cols = Object.keys(data)
+    .filter(k => !['id', '_id', 'table', 'project'].includes(k))
+    .map(k => `"${k}" TEXT`);
+  if (!cols.length) return;
+  await pool.query(`CREATE TABLE "${tabela}" (_id SERIAL PRIMARY KEY, ${cols.join(', ')})`);
+  console.log(`Tabela "${tabela}" criada`);
+}
 
 app.get('/', (_, res) => res.json({ status: 'OK', project: 'FinanceOrganizer' }));
 
@@ -219,6 +238,8 @@ app.post('/:tabela', async (req, res) => {
   const keys = Object.keys(data);
   if (!keys.length) return res.status(400).json({ error: 'empty body' });
   try {
+    await garantirTabela(t, data);
+    await garantirColunas(t, data);
     const cols = keys.map(k => `"${k}"`);
     const vals = keys.map((_, i) => `$${i + 1}`);
     const { rows } = await pool.query(
@@ -240,6 +261,7 @@ app.put('/:tabela/:id', async (req, res) => {
   const keys = Object.keys(data);
   if (!keys.length) return res.status(400).json({ error: 'empty body' });
   try {
+    await garantirColunas(t, data);
     const sets = keys.map((k, i) => `"${k}" = $${i + 1}`);
     const { rows } = await pool.query(
       `UPDATE "${t}" SET ${sets} WHERE _id = $${keys.length + 1} RETURNING *`,
@@ -316,6 +338,7 @@ services:
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASS: ${DB_PASS}
+      API_TOKEN: ${API_TOKEN}
     depends_on:
       db:
         condition: service_healthy
@@ -333,20 +356,6 @@ COMPOSEEOF
 
 
 # ---------------------------------------------------------------
-# Frontend
-# ---------------------------------------------------------------
-info "Copiando frontend..."
-cp "$SCRIPT_DIR/index.html" "$FRONTEND_DIR/" 2>/dev/null || warn "index.html não encontrado"
-cp -r "$SCRIPT_DIR/css" "$FRONTEND_DIR/" 2>/dev/null || warn "css/ não encontrado"
-cp -r "$SCRIPT_DIR/js" "$FRONTEND_DIR/" 2>/dev/null || warn "js/ não encontrado"
-
-# Ajusta API baseUrl default no api.js
-if [ -f "$FRONTEND_DIR/js/api.js" ]; then
-  sed -i "s|http://localhost:3000|/$PNAME/api|g" "$FRONTEND_DIR/js/api.js"
-fi
-
-
-# ---------------------------------------------------------------
 # Nginx config (arquivo separado)
 # ---------------------------------------------------------------
 info "Configurando nginx..."
@@ -359,9 +368,9 @@ server {
     server_name api.projetosdinamicos.com.br;
     client_max_body_size 15M;
 
-    location /${PNAME}/ {
-        alias ${FRONTEND_DIR}/;
-        try_files \$uri \$uri/ /${PNAME}/index.html;
+    location / {
+        default_type application/json;
+        return 200 '{"status":"OK","project":"FinanceOrganizer API"}';
     }
 
     location /${PNAME}/api/ {
@@ -419,13 +428,14 @@ curl -sf "$BASE" | grep -q '"OK"' && info "GET /     OK" || warn "GET /     falh
 curl -sf "${BASE}health" | grep -q '"healthy"' && info "GET /health OK" || warn "GET /health falhou"
 
 # Testa create/read/delete com tabela 'receitas'
+AUTH="Authorization: Bearer $API_TOKEN"
 DATA='{"descricao":"Teste install","valor":100,"categoria":"outros","data":"2026-06-21"}'
-R=$(curl -sf -X POST "${BASE}receitas" -H "Content-Type: application/json" -d "$DATA" 2>/dev/null) || R=""
+R=$(curl -sf -X POST "${BASE}receitas" -H "$AUTH" -H "Content-Type: application/json" -d "$DATA" 2>/dev/null) || R=""
 ID=$(echo "$R" | sed -n 's/.*"_id":\([0-9]*\).*/\1/p')
 if [ -n "$ID" ]; then
   info "POST   /receitas OK (_id=$ID)"
-  curl -sf "${BASE}receitas" | grep -q "$ID" && info "GET    /receitas OK" || warn "GET    /receitas falhou"
-  curl -sf -X DELETE "${BASE}receitas/$ID" | grep -q '"success"' && info "DELETE /receitas OK" || warn "DELETE /receitas falhou"
+  curl -sf "${BASE}receitas" -H "$AUTH" | grep -q "$ID" && info "GET    /receitas OK" || warn "GET    /receitas falhou"
+  curl -sf -X DELETE "${BASE}receitas/$ID" -H "$AUTH" | grep -q '"success"' && info "DELETE /receitas OK" || warn "DELETE /receitas falhou"
 else
   warn "POST   /receitas falhou: $R"
 fi
@@ -435,14 +445,16 @@ fi
 echo ""
 info "===== Instalação concluída ====="
 echo ""
-echo "  Frontend:  http://api.projetosdinamicos.com.br/$PNAME/"
 echo "  API:       http://api.projetosdinamicos.com.br/$PNAME/api/"
+echo "  Health:    http://api.projetosdinamicos.com.br/$PNAME/health"
 echo "  Porta:     $APP_PORT"
 echo "  Diretório: $INSTALL_DIR"
 echo ""
-echo "  Configure o frontend em Configurações:"
-echo "    URL da API: /$PNAME/api"
-echo "    Token:      (deixe vazio se não usar autenticação)"
+echo "  Token:     $API_TOKEN"
+echo ""
+echo "  No Servidor B (frontend estático), configure:"
+echo "    URL da API: https://api.projetosdinamicos.com.br/$PNAME/api"
+echo "    Token:      $API_TOKEN"
 echo "    Projeto:    $PNAME"
 echo ""
 echo "  Para desinstalar: sudo bash $0 uninstall $INSTALL_DIR"
