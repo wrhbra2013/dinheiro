@@ -27,17 +27,25 @@ uninstall() {
 
   INSTALL_DIR="${INSTALL_DIR:-/var/www/${COMPOSE_PROJECT_NAME:-dinheiro}}"
   PNAME="${COMPOSE_PROJECT_NAME:-dinheiro}"
+  DB_NAME="${DB_NAME:-$PNAME}"
 
   _dc() { docker compose -f "$INSTALL_DIR/docker-compose.yml" "$@"; }
 
   if [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
-    info "Parando containers..."
-    _dc down -v 2>/dev/null && info "Containers removidos" || warn "Falha ao derrubar containers"
+    info "Removendo banco de dados $DB_NAME do PostgreSQL..."
+    docker exec "${PNAME}-db-1" psql -U postgres -c "DROP DATABASE IF EXISTS \"${DB_NAME}\";" 2>/dev/null || \
+      warn "Banco nao removido (container pode nao estar rodando)"
+
+    info "Parando containers e removendo volumes..."
+    _dc down -v 2>/dev/null && info "Containers e volumes removidos" || warn "Falha ao derrubar containers"
   fi
 
   info "Removendo nginx config..."
-  rm -f "$NGINX_ENABLED/$PNAME" "$NGINX_AVAILABLE/$PNAME"
-  nginx -t 2>/dev/null && systemctl reload nginx.service 2>/dev/null || true
+  if [ -f "$NGINX_AVAILABLE/default" ]; then
+    sed -i "/${PNAME}-locations.conf/d" "$NGINX_AVAILABLE/default"
+    nginx -t 2>/dev/null && sudo systemctl reload nginx 2>/dev/null || true
+  fi
+  rm -f "/etc/nginx/${PNAME}-locations.conf"
 
   info "Removendo $INSTALL_DIR..."
   rm -rf "$INSTALL_DIR" && info "Diretório removido"
@@ -356,45 +364,43 @@ COMPOSEEOF
 
 
 # ---------------------------------------------------------------
-# Nginx config (arquivo separado)
+# Nginx config
 # ---------------------------------------------------------------
 info "Configurando nginx..."
-NGINX_SITE="$NGINX_AVAILABLE/$PNAME"
 
-cat > "$NGINX_SITE" <<NGINXEOF
-server {
-    listen 80;
-    listen [::]:80;
-    server_name api.projetosdinamicos.com.br;
-    client_max_body_size 15M;
+# Cria arquivo de configuracao separado para os locations do dinheiro
+DINHEIRO_NGINX_CONF="/etc/nginx/${PNAME}-locations.conf"
 
-    location / {
-        default_type application/json;
-        return 200 '{"status":"OK","project":"FinanceOrganizer API"}';
-    }
+cat > "$DINHEIRO_NGINX_CONF" <<NGINXEOF
+location /${PNAME}/api/ {
+    rewrite ^/${PNAME}/api/(.*) /\$1 break;
+    proxy_pass http://127.0.0.1:${APP_PORT}/;
+    proxy_http_version 1.1;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+}
 
-    location /${PNAME}/api/ {
-        rewrite ^/${PNAME}/api/(.*) /\$1 break;
-        proxy_pass http://127.0.0.1:${APP_PORT}/;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-
-    location /${PNAME}/health {
-        rewrite ^/${PNAME}/health(.*) /health\$1 break;
-        proxy_pass http://127.0.0.1:${APP_PORT};
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-    }
+location /${PNAME}/health {
+    rewrite ^/${PNAME}/health(.*) /health\$1 break;
+    proxy_pass http://127.0.0.1:${APP_PORT};
+    proxy_http_version 1.1;
+    proxy_set_header Host \$host;
 }
 NGINXEOF
 
-ln -sf "$NGINX_SITE" "$NGINX_ENABLED/$PNAME"
+# Adiciona include nos server blocks do api.projetosdinamicos.com.br
+if [ -f "$NGINX_AVAILABLE/default" ]; then
+  if ! grep -q "${PNAME}-locations.conf" "$NGINX_AVAILABLE/default"; then
+    sed -i "/^\s*server_name api\.projetosdinamicos\.com\.br;$/a\    include ${DINHEIRO_NGINX_CONF};" "$NGINX_AVAILABLE/default"
+    info "Include adicionado ao nginx"
+  else
+    info "Include ja existe no nginx"
+  fi
+fi
 
-nginx -t 2>/dev/null && systemctl reload nginx.service 2>/dev/null && info "Nginx configurado" || \
+nginx -t 2>/dev/null && sudo systemctl reload nginx 2>/dev/null && info "Nginx configurado" || \
   warn "Falha no nginx — verifique manualmente"
 
 
