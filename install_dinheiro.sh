@@ -407,11 +407,22 @@ nginx -t 2>/dev/null && sudo systemctl reload nginx 2>/dev/null && info "Nginx c
 # ---------------------------------------------------------------
 # Docker build + up
 # ---------------------------------------------------------------
+if [ -f "$INSTALL_DIR/docker-compose.yml" ] && [ -d "$SRC_DIR" ] && [ -f "$INSTALL_DIR/.env" ]; then
+  info "Projeto já instalado — apenas subindo containers..."
+  $DCC -f "$INSTALL_DIR/docker-compose.yml" --project-name "$PNAME" up -d || error "Falha ao subir containers"
+  info "Logs dos containers:"
+  $DCC -f "$INSTALL_DIR/docker-compose.yml" --project-name "$PNAME" logs --tail=20
+  exit 0
+fi
+
 info "Build da imagem..."
 $DCC -f "$INSTALL_DIR/docker-compose.yml" build || error "Falha no build"
 
 info "Iniciando containers..."
 $DCC -f "$INSTALL_DIR/docker-compose.yml" --project-name "$PNAME" up -d || error "Falha ao iniciar"
+
+info "Logs dos containers:"
+$DCC -f "$INSTALL_DIR/docker-compose.yml" --project-name "$PNAME" logs --tail=20
 
 info "Aguardando API (até 30s)..."
 for i in $(seq 1 30); do
@@ -427,13 +438,12 @@ done
 # ---------------------------------------------------------------
 # Testes
 # ---------------------------------------------------------------
-info "Testando..."
+info "Testando via localhost..."
 sleep 2
 BASE="http://127.0.0.1:$APP_PORT/"
 curl -sf "$BASE" | grep -q '"OK"' && info "GET /     OK" || warn "GET /     falhou"
 curl -sf "${BASE}health" | grep -q '"healthy"' && info "GET /health OK" || warn "GET /health falhou"
 
-# Testa create/read/delete com tabela 'receitas'
 AUTH="Authorization: Bearer $API_TOKEN"
 DATA='{"descricao":"Teste install","valor":100,"categoria":"outros","data":"2026-06-21"}'
 R=$(curl -sf -X POST "${BASE}receitas" -H "$AUTH" -H "Content-Type: application/json" -d "$DATA" 2>/dev/null) || R=""
@@ -445,6 +455,12 @@ if [ -n "$ID" ]; then
 else
   warn "POST   /receitas falhou: $R"
 fi
+
+info "Testando via nginx (URL pública)..."
+PUBLIC_API="https://api.projetosdinamicos.com.br/$PNAME/api/"
+PUBLIC_HEALTH="https://api.projetosdinamicos.com.br/$PNAME/health"
+curl -sfk "$PUBLIC_API" | grep -q '"OK"' && info "GET  $PUBLIC_API OK" || warn "GET  $PUBLIC_API falhou"
+curl -sfk "$PUBLIC_HEALTH" | grep -q '"healthy"' && info "GET  $PUBLIC_HEALTH OK" || warn "GET  $PUBLIC_HEALTH falhou"
 
 
 # ---------------------------------------------------------------

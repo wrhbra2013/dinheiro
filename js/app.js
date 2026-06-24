@@ -29,8 +29,8 @@ let dados = {
     naos: []
 };
 
-document.addEventListener('DOMContentLoaded', () => {
-    loadData();
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadData();
     initDefaultDate();
     renderAll();
     loadApiConfigForm();
@@ -59,7 +59,35 @@ function initMonthFilter() {
         months.map(m => `<option value="${m.value}">${m.label}</option>`).join('');
 }
 
-function loadData() {
+function normalizar(itens) {
+    return itens.map(i => ({
+        ...i,
+        valor: typeof i.valor === 'string' ? parseFloat(i.valor) : i.valor,
+        valorAtual: i.valorAtual != null ? (typeof i.valorAtual === 'string' ? parseFloat(i.valorAtual) : i.valorAtual) : 0,
+        essencial: i.essencial === true || i.essencial === 'true'
+    }));
+}
+
+async function loadData() {
+    if (API.isConfigured()) {
+        try {
+            const [receitas, despesas, metas, naos] = await Promise.all([
+                API.list('receitas'),
+                API.list('despesas'),
+                API.list('metas'),
+                API.list('naos')
+            ]);
+            dados = {
+                receitas: normalizar(receitas),
+                despesas: normalizar(despesas),
+                metas: normalizar(metas),
+                naos: normalizar(naos)
+            };
+            return;
+        } catch {
+            // fallback para localStorage
+        }
+    }
     try {
         const saved = localStorage.getItem('finance_data');
         if (saved) {
@@ -219,24 +247,34 @@ function renderReceitas() {
             <td>${esc(CATEGORIAS_RECEITA[r.categoria])}</td>
             <td class="amount income">${formatCurrency(r.valor)}</td>
             <td>
-                <button class="btn btn-sm btn-danger" onclick="deleteReceita(${r.id})">🗑️</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteReceita(${r._id ?? r.id})">🗑️</button>
             </td>
         </tr>
     `).join('');
 }
 
-function addReceita(e) {
+async function addReceita(e) {
     e.preventDefault();
     const desc = document.getElementById('receita-desc').value.replace(/<[^>]*>/g, '');
     const val = parseFloat(document.getElementById('receita-valor').value);
     if (isNaN(val) || val <= 0) return;
-    dados.receitas.push({
-        id: Date.now(),
+    const payload = {
         descricao: desc,
         valor: val,
         data: document.getElementById('receita-data').value,
         categoria: document.getElementById('receita-categoria').value
-    });
+    };
+    if (API.isConfigured()) {
+        try {
+            const result = await API.create('receitas', payload);
+            dados.receitas.push(normalizar([result])[0]);
+        } catch (err) {
+            alert('Erro ao salvar: ' + err.message);
+            return;
+        }
+    } else {
+        dados.receitas.push({ id: Date.now(), ...payload });
+    }
     saveData();
     renderAll();
     closeModal('receita');
@@ -244,9 +282,17 @@ function addReceita(e) {
     initDefaultDate();
 }
 
-function deleteReceita(id) {
+async function deleteReceita(id) {
     if (confirm('Excluir esta receita?')) {
-        dados.receitas = dados.receitas.filter(r => r.id !== id);
+        if (API.isConfigured()) {
+            try {
+                await API.remove('receitas', id);
+            } catch (err) {
+                alert('Erro ao excluir: ' + err.message);
+                return;
+            }
+        }
+        dados.receitas = dados.receitas.filter(r => (r._id ?? r.id) !== id);
         saveData();
         renderAll();
     }
@@ -271,25 +317,35 @@ function renderDespesas() {
             <td>${esc(CATEGORIAS_DESPESA[d.categoria])} <span class="badge ${d.essencial !== false ? 'badge-essential' : 'badge-optional'}">${d.essencial !== false ? 'Essencial' : 'Supérfluo'}</span></td>
             <td class="amount expense">-${formatCurrency(d.valor)}</td>
             <td>
-                <button class="btn btn-sm btn-danger" onclick="deleteDespesa(${d.id})">🗑️</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteDespesa(${d._id ?? d.id})">🗑️</button>
             </td>
         </tr>
     `).join('');
 }
 
-function addDespesa(e) {
+async function addDespesa(e) {
     e.preventDefault();
     const desc = document.getElementById('despesa-desc').value.replace(/<[^>]*>/g, '');
     const val = parseFloat(document.getElementById('despesa-valor').value);
     if (isNaN(val) || val <= 0) return;
-    dados.despesas.push({
-        id: Date.now(),
+    const payload = {
         descricao: desc,
         valor: val,
         data: document.getElementById('despesa-data').value,
         categoria: document.getElementById('despesa-categoria').value,
         essencial: document.getElementById('despesa-essencial').checked
-    });
+    };
+    if (API.isConfigured()) {
+        try {
+            const result = await API.create('despesas', payload);
+            dados.despesas.push(normalizar([result])[0]);
+        } catch (err) {
+            alert('Erro ao salvar: ' + err.message);
+            return;
+        }
+    } else {
+        dados.despesas.push({ id: Date.now(), ...payload });
+    }
     saveData();
     renderAll();
     closeModal('despesa');
@@ -297,9 +353,17 @@ function addDespesa(e) {
     initDefaultDate();
 }
 
-function deleteDespesa(id) {
+async function deleteDespesa(id) {
     if (confirm('Excluir esta despesa?')) {
-        dados.despesas = dados.despesas.filter(d => d.id !== id);
+        if (API.isConfigured()) {
+            try {
+                await API.remove('despesas', id);
+            } catch (err) {
+                alert('Erro ao excluir: ' + err.message);
+                return;
+            }
+        }
+        dados.despesas = dados.despesas.filter(d => (d._id ?? d.id) !== id);
         saveData();
         renderAll();
     }
@@ -323,7 +387,7 @@ function renderMetas() {
             <div class="goal-card">
                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                     <h4>${esc(m.nome)}</h4>
-                    <button class="btn btn-sm btn-danger" onclick="deleteMeta(${m.id})">🗑️</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteMeta(${m._id ?? m.id})">🗑️</button>
                 </div>
                 <p>${esc(m.descricao || '')}</p>
                 <div class="goal-progress">
@@ -336,49 +400,76 @@ function renderMetas() {
                     <span>${percent.toFixed(0)}% • ${daysLeft > 0 ? daysLeft + ' dias' : 'Tempo esgotado'}</span>
                 </div>
                 <div style="margin-top: 12px; display: flex; gap: 8px;">
-                    <input type="number" id="add-meta-${m.id}" placeholder="Valor" style="flex: 1; padding: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text);" step="0.01">
-                    <button class="btn btn-sm btn-primary" onclick="addToMeta(${m.id})">+</button>
+                    <input type="number" id="add-meta-${m._id ?? m.id}" placeholder="Valor" style="flex: 1; padding: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text);" step="0.01">
+                    <button class="btn btn-sm btn-primary" onclick="addToMeta(${m._id ?? m.id})">+</button>
                 </div>
             </div>
         `;
     }).join('');
 }
 
-function addMeta(e) {
+async function addMeta(e) {
     e.preventDefault();
     const nome = document.getElementById('meta-nome').value.replace(/<[^>]*>/g, '');
     const desc = document.getElementById('meta-desc').value.replace(/<[^>]*>/g, '');
     const val = parseFloat(document.getElementById('meta-valor').value);
     if (isNaN(val) || val <= 0) return;
-    dados.metas.push({
-        id: Date.now(),
+    const payload = {
         nome: nome,
         descricao: desc,
         valor: val,
         valorAtual: 0,
         dataLimite: document.getElementById('meta-data').value
-    });
+    };
+    if (API.isConfigured()) {
+        try {
+            const result = await API.create('metas', payload);
+            dados.metas.push(normalizar([result])[0]);
+        } catch (err) {
+            alert('Erro ao salvar: ' + err.message);
+            return;
+        }
+    } else {
+        dados.metas.push({ id: Date.now(), ...payload });
+    }
     saveData();
     renderAll();
     closeModal('meta');
     e.target.reset();
+    initDefaultDate();
 }
 
-function deleteMeta(id) {
+async function deleteMeta(id) {
     if (confirm('Excluir esta meta?')) {
-        dados.metas = dados.metas.filter(m => m.id !== id);
+        if (API.isConfigured()) {
+            try {
+                await API.remove('metas', id);
+            } catch (err) {
+                alert('Erro ao excluir: ' + err.message);
+                return;
+            }
+        }
+        dados.metas = dados.metas.filter(m => (m._id ?? m.id) !== id);
         saveData();
         renderAll();
     }
 }
 
-function addToMeta(id) {
+async function addToMeta(id) {
     const input = document.getElementById(`add-meta-${id}`);
     const value = parseFloat(input.value);
     if (value > 0) {
-        const meta = dados.metas.find(m => m.id === id);
+        const meta = dados.metas.find(m => (m._id ?? m.id) === id);
         if (meta) {
             meta.valorAtual = (meta.valorAtual || 0) + value;
+            if (API.isConfigured() && meta._id) {
+                try {
+                    await API.update('metas', meta._id, { valorAtual: meta.valorAtual });
+                } catch (err) {
+                    alert('Erro ao atualizar meta: ' + err.message);
+                    return;
+                }
+            }
             saveData();
             renderAll();
         }
@@ -556,26 +647,44 @@ function renderConsciousConsumption() {
 }
 
 // ============= REGRA 3: APRENDER A DIZER NÃO =============
-function addNao(e) {
+async function addNao(e) {
     e.preventDefault();
     const desc = document.getElementById('nao-desc').value.replace(/<[^>]*>/g, '');
     const val = parseFloat(document.getElementById('nao-valor').value);
     if (isNaN(val) || val <= 0) return;
-    dados.naos.push({
-        id: Date.now(),
+    const payload = {
         descricao: desc,
         valor: val,
         data: new Date().toISOString().split('T')[0]
-    });
+    };
+    if (API.isConfigured()) {
+        try {
+            const result = await API.create('naos', payload);
+            dados.naos.push(normalizar([result])[0]);
+        } catch (err) {
+            alert('Erro ao salvar: ' + err.message);
+            return;
+        }
+    } else {
+        dados.naos.push({ id: Date.now(), ...payload });
+    }
     saveData();
     renderAll();
     closeModal('nao');
     e.target.reset();
 }
 
-function deleteNao(id) {
+async function deleteNao(id) {
     if (confirm('Remover este registro?')) {
-        dados.naos = dados.naos.filter(n => n.id !== id);
+        if (API.isConfigured()) {
+            try {
+                await API.remove('naos', id);
+            } catch (err) {
+                alert('Erro ao excluir: ' + err.message);
+                return;
+            }
+        }
+        dados.naos = dados.naos.filter(n => (n._id ?? n.id) !== id);
         saveData();
         renderAll();
     }
@@ -602,7 +711,7 @@ function renderNaoList() {
                 </div>
                 <div style="display:flex;align-items:center;gap:8px">
                     <span class="nao-valor">+${formatCurrency(n.valor)}</span>
-                    <button class="btn btn-sm btn-danger" onclick="deleteNao(${n.id})">🗑️</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteNao(${n._id ?? n.id})">🗑️</button>
                 </div>
             </div>
         `).join('');
