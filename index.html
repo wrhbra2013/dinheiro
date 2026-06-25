@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FinanceOrganizer - Organizador Financeiro</title>
+    <title>Clube de Investidores</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,568 +11,146 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <header class="header">
-        <button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">☰</button>
-        <h1><span>💰</span> FinanceOrganizer</h1>
-    </header>
-    <div class="app-container">
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <h2>💰 FinanceOrganizer</h2>
-            </div>
-            
-            <nav class="nav-menu">
-                <button class="nav-btn active" data-view="dashboard" onclick="switchView('dashboard')">
-                    <span>📊</span> Dashboard
-                </button>
-                <button class="nav-btn" data-view="receitas" onclick="switchView('receitas')">
-                    <span>📈</span> Receitas
-                </button>
-                <button class="nav-btn" data-view="despesas" onclick="switchView('despesas')">
-                    <span>📉</span> Despesas
-                </button>
-                <button class="nav-btn" data-view="metas" onclick="switchView('metas')">
-                    <span>🎯</span> Metas
-                </button>
-                <button class="nav-btn" data-view="relatorios" onclick="switchView('relatorios')">
-                    <span>📋</span> Relatórios
-                </button>
-                <button class="nav-btn" data-view="orcamento" onclick="switchView('orcamento')">
-                    <span>📝</span> Orçamento
-                </button>
-                <button class="nav-btn" data-view="investimentos" onclick="switchView('investimentos')">
-                    <span>📈</span> Investimentos
-                </button>
-            </nav>
 
-            <div class="sidebar-footer">
-                <div class="balance-summary">
-                    <span>Saldo Atual</span>
-                    <strong id="header-balance">R$ 0,00</strong>
-                </div>
-                <div class="sidebar-actions">
-                    <button class="btn btn-sm btn-secondary" onclick="exportData()">📤 Exportar</button>
-                    <button class="btn btn-sm btn-secondary" onclick="document.getElementById('import-file').click()">📥 Importar</button>
-                    <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
-                    <button class="btn btn-sm btn-danger" onclick="resetData()">🔄 Resetar</button>
-                    <button class="btn btn-sm btn-secondary" onclick="openModal('api-config')">⚙️ API</button>
+<!-- ============ AUTH SECTION ============ -->
+<div id="auth-section" class="auth-section">
+    <div class="auth-container">
+        <div class="auth-logo">
+            <span>💰</span>
+            <h1>Clube de Investidores</h1>
+            <p>Fórum para discutir investimentos</p>
+        </div>
+
+        <div class="auth-tabs">
+            <button class="auth-tab active" id="auth-tab-login" onclick="toggleAuthTab('login')">Entrar</button>
+            <button class="auth-tab" id="auth-tab-register" onclick="toggleAuthTab('register')">Cadastrar</button>
+        </div>
+
+        <div id="auth-error" class="auth-error"></div>
+
+        <!-- Login -->
+        <form id="auth-form-login" class="auth-form active" onsubmit="handleLogin(event)">
+            <div class="form-group">
+                <label>Celular</label>
+                <input type="tel" id="login-celular" placeholder="(11) 99999-9999" required>
+            </div>
+            <div class="form-group">
+                <label>Senha (4 últimos dígitos do celular)</label>
+                <input type="password" id="login-senha" placeholder="Digite sua senha" required maxlength="4" inputmode="numeric">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Entrar</button>
+        </form>
+
+        <!-- Register -->
+        <form id="auth-form-register" class="auth-form" onsubmit="handleRegister(event)">
+            <div class="form-group">
+                <label>Nome completo</label>
+                <input type="text" id="reg-nome" placeholder="Seu nome" required>
+            </div>
+            <div class="form-group">
+                <label>Celular (com DDD)</label>
+                <input type="tel" id="reg-celular" placeholder="(11) 99999-9999" required inputmode="numeric">
+            </div>
+            <div class="form-info">
+                <span>🔐</span>
+                <span>Sua senha será os <strong>4 últimos dígitos</strong> do seu celular</span>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Cadastrar</button>
+        </form>
+    </div>
+</div>
+
+<!-- ============ CONFIRM SECTION ============ -->
+<div id="confirm-section" class="auth-section">
+    <div class="auth-container">
+        <div class="auth-logo">
+            <span>📱</span>
+            <h1>Confirme seu WhatsApp</h1>
+            <p>Enviamos um código para <strong id="confirm-phone"></strong></p>
+        </div>
+
+        <div id="confirm-error" class="auth-error"></div>
+
+        <form onsubmit="handleConfirm(event)">
+            <div class="form-group">
+                <label>Código de confirmação</label>
+                <input type="text" id="confirm-code" placeholder="000000" required maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Confirmar</button>
+        </form>
+
+        <div class="confirm-simulated">
+            <p>📱 Código simulado (WhatsApp): <strong id="confirm-code-display"></strong></p>
+            <button class="btn btn-sm btn-secondary" onclick="resendCode()">Reenviar código</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============ FORUM SECTION ============ -->
+<div id="forum-section" class="forum-section">
+    <header class="forum-header">
+        <button class="hamburger" onclick="toggleSidebar()">☰</button>
+        <div class="forum-header-left">
+            <h1>💰 Clube de Investidores</h1>
+        </div>
+        <div class="forum-header-right">
+            <div class="user-badge">
+                <span class="user-avatar" id="user-avatar"></span>
+                <div class="user-info">
+                    <strong id="user-name"></strong>
+                    <small id="user-phone"></small>
                 </div>
             </div>
+            <button class="btn btn-sm btn-secondary" onclick="handleLogout()">Sair</button>
+        </div>
+    </header>
+
+    <div class="macro-bar" id="macro-bar">
+        <span>Selic: <strong id="macro-selic">...</strong></span>
+        <span>CDI: <strong id="macro-cdi">...</strong></span>
+        <span>IPCA: <strong id="macro-ipca">...</strong></span>
+        <span>Ibovespa: <strong id="macro-ibov">...</strong></span>
+    </div>
+
+    <div class="forum-body">
+        <aside class="sidebar" id="forum-sidebar">
+            <div class="sidebar-header">
+                <h2>📊 Ativos</h2>
+            </div>
+            <nav class="sidebar-nav" id="sidebar-assets"></nav>
         </aside>
 
-        <main class="main-content">
-            <!-- DASHBOARD -->
-            <div class="view active" id="view-dashboard">
-                <div class="view-header">
-                    <h1>Dashboard Financeiro</h1>
+        <div class="forum-main" id="forum-main">
+            <div class="forum-view-header">
+                <div>
+                    <h2 id="forum-title">💬 Fórum Geral</h2>
+                    <span class="forum-category" id="forum-category">Geral</span>
                 </div>
-                
-                <div class="stats-grid">
-                    <div class="stat-card income">
-                        <div class="stat-icon">📈</div>
-                        <div class="stat-info">
-                            <span class="stat-value" id="dash-receitas">R$ 0,00</span>
-                            <span class="stat-label">Receitas</span>
-                        </div>
-                    </div>
-                    <div class="stat-card expense">
-                        <div class="stat-icon">📉</div>
-                        <div class="stat-info">
-                            <span class="stat-value" id="dash-despesas">R$ 0,00</span>
-                            <span class="stat-label">Despesas</span>
-                        </div>
-                    </div>
-                    <div class="stat-card balance">
-                        <div class="stat-icon">💰</div>
-                        <div class="stat-info">
-                            <span class="stat-value" id="dash-saldo">R$ 0,00</span>
-                            <span class="stat-label">Saldo</span>
-                        </div>
-                    </div>
-                    <div class="stat-card goals">
-                        <div class="stat-icon">🎯</div>
-                        <div class="stat-info">
-                            <span class="stat-value" id="dash-metas">0</span>
-                            <span class="stat-label">Metas</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="dashboard-grid">
-                    <div class="card">
-                        <h3>📊 Últimas Transações</h3>
-                        <div id="recent-transactions" class="transaction-list"></div>
-                    </div>
-                    <div class="card">
-                        <h3>🎯 Progresso das Metas</h3>
-                        <div id="goals-progress" class="goals-list"></div>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3>Gastos por Categoria</h3>
-                    <div id="category-chart" class="chart-bars"></div>
-                </div>
-
-                <div class="dashboard-grid">
-                    <div class="card">
-                        <h3>📊 Análise 80/20</h3>
-                        <div id="pareto-analysis"></div>
-                    </div>
-                    <div class="card">
-                        <h3>🚦 Regra 1: Evitar Dívidas</h3>
-                        <div id="debt-warning"></div>
-                    </div>
-                </div>
-
-                <div class="dashboard-grid">
-                    <div class="card">
-                        <h3>🧠 Regra 2: Consumo Consciente</h3>
-                        <div id="conscious-consumption"></div>
-                    </div>
-                    <div class="card">
-                        <h3>🙅 Regra 3: Aprender a Dizer Não</h3>
-                        <div id="say-no-section">
-                            <button class="btn btn-primary" onclick="openModal('nao')" style="margin-bottom:16px">+ Registrar "Não"</button>
-                            <div id="nao-list"></div>
-                        </div>
-                    </div>
+                <div class="forum-members">
+                    <span>👥</span>
+                    <span id="forum-online">1</span> online
                 </div>
             </div>
 
-            <!-- RECEITAS -->
-            <div class="view" id="view-receitas">
-                <div class="view-header">
-                    <h1>Receitas</h1>
-                    <button class="btn btn-primary" onclick="openModal('receita')">+ Nova Receita</button>
-                </div>
-                
-                <div class="summary-box">
-                    <span>Total de Receitas:</span>
-                    <strong id="total-receitas">R$ 0,00</strong>
-                </div>
+            <div class="asset-data" id="asset-data"></div>
 
-                <div class="card">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Data</th>
-                                <th>Descrição</th>
-                                <th>Categoria</th>
-                                <th>Valor</th>
-                                <th>Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="receitas-table"></tbody>
-                    </table>
-                </div>
+            <div class="forum-posts" id="forum-posts">
+                <div class="forum-empty">Selecione um ativo para começar</div>
             </div>
 
-            <!-- DESPESAS -->
-            <div class="view" id="view-despesas">
-                <div class="view-header">
-                    <h1>Despesas</h1>
-                    <button class="btn btn-primary" onclick="openModal('despesa')">+ Nova Despesa</button>
-                </div>
-                
-                <div class="summary-box">
-                    <span>Total de Despesas:</span>
-                    <strong id="total-despesas">R$ 0,00</strong>
-                </div>
-
-                <div class="card">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Data</th>
-                                <th>Descrição</th>
-                                <th>Categoria</th>
-                                <th>Valor</th>
-                                <th>Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="despesas-table"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- METAS -->
-            <div class="view" id="view-metas">
-                <div class="view-header">
-                    <h1>Metas de Economia</h1>
-                    <button class="btn btn-primary" onclick="openModal('meta')">+ Nova Meta</button>
-                </div>
-                
-                <div class="goals-grid" id="goals-grid"></div>
-            </div>
-
-            <!-- RELATÓRIOS -->
-            <div class="view" id="view-relatorios">
-                <div class="view-header">
-                    <h1>Relatórios</h1>
-                </div>
-                
-                <div class="report-filters">
-                    <select id="report-month" onchange="renderReports()">
-                        <option value="">Selecione o mês</option>
-                    </select>
-                </div>
-
-                <div class="stats-grid" style="margin-bottom: 24px;">
-                    <div class="stat-card income">
-                        <div class="stat-info">
-                            <span class="stat-value" id="report-receitas">R$ 0,00</span>
-                            <span class="stat-label">Receitas do Mês</span>
-                        </div>
-                    </div>
-                    <div class="stat-card expense">
-                        <div class="stat-info">
-                            <span class="stat-value" id="report-despesas">R$ 0,00</span>
-                            <span class="stat-label">Despesas do Mês</span>
-                        </div>
-                    </div>
-                    <div class="stat-card balance">
-                        <div class="stat-info">
-                            <span class="stat-value" id="report-saldo">R$ 0,00</span>
-                            <span class="stat-label">Saldo do Mês</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3>Comparativo Mensal</h3>
-                    <div id="monthly-comparison" class="chart-bars"></div>
-                </div>
-            </div>
-
-            <!-- ORÇAMENTO -->
-            <div class="view" id="view-orcamento">
-                <div class="view-header">
-                    <h1>Orçamento</h1>
-                    <button class="btn btn-primary" onclick="openModal('orcamento')">+ Novo Item</button>
-                </div>
-
-                <div class="summary-box">
-                    <span>Total Orçado:</span>
-                    <strong id="total-orcamento">R$ 0,00</strong>
-                </div>
-
-                <div class="card">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Data</th>
-                                <th>Descrição</th>
-                                <th>Categoria</th>
-                                <th>Tipo</th>
-                                <th>Valor</th>
-                                <th>Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="orcamento-table"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- INVESTIMENTOS -->
-            <div class="view" id="view-investimentos">
-                <div class="view-header">
-                    <h1>Investimentos</h1>
-                    <button class="btn btn-primary" onclick="openModal('investimento')">+ Novo Investimento</button>
-                </div>
-
-                <div class="stats-grid" style="margin-bottom:24px">
-                    <div class="stat-card income">
-                        <div class="stat-info">
-                            <span class="stat-value" id="inv-total">R$ 0,00</span>
-                            <span class="stat-label">Total Investido</span>
-                        </div>
-                    </div>
-                    <div class="stat-card goals">
-                        <div class="stat-info">
-                            <span class="stat-value" id="inv-qtd">0</span>
-                            <span class="stat-label">Ativos</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="investimentos-list"></div>
-            </div>
-        </main>
-    </div>
-
-    <!-- Modal Nova Receita -->
-    <div class="modal" id="modal-receita">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Nova Receita</h2>
-                <button class="modal-close" onclick="closeModal('receita')">&times;</button>
-            </div>
-            <form class="modal-body" onsubmit="addReceita(event)">
-                <div class="form-group">
-                    <label>Descrição</label>
-                    <input type="text" id="receita-desc" required placeholder="Ex: Salário">
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Valor</label>
-                        <input type="number" id="receita-valor" step="0.01" min="0" required placeholder="0,00">
-                    </div>
-                    <div class="form-group">
-                        <label>Data</label>
-                        <input type="date" id="receita-data" required>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Categoria</label>
-                    <select id="receita-categoria">
-                        <option value="salario">Salário</option>
-                        <option value="freelance">Freelance</option>
-                        <option value="investimento">Investimento</option>
-                        <option value="presente">Presente</option>
-                        <option value="outros">Outros</option>
-                    </select>
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('receita')">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Adicionar</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Modal Nova Despesa -->
-    <div class="modal" id="modal-despesa">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Nova Despesa</h2>
-                <button class="modal-close" onclick="closeModal('despesa')">&times;</button>
-            </div>
-            <form class="modal-body" onsubmit="addDespesa(event)">
-                <div class="form-group">
-                    <label>Descrição</label>
-                    <input type="text" id="despesa-desc" required placeholder="Ex: Alimentação">
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Valor</label>
-                        <input type="number" id="despesa-valor" step="0.01" min="0" required placeholder="0,00">
-                    </div>
-                    <div class="form-group">
-                        <label>Data</label>
-                        <input type="date" id="despesa-data" required>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Categoria</label>
-                    <select id="despesa-categoria">
-                        <option value="alimentacao">Alimentação</option>
-                        <option value="transporte">Transporte</option>
-                        <option value="moradia">Moradia</option>
-                        <option value="lazer">Lazer</option>
-                        <option value="saude">Saúde</option>
-                        <option value="educacao">Educação</option>
-                        <option value="outros">Outros</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="despesa-essencial" checked>
-                        <span>✅ Essencial (necessário)</span>
-                    </label>
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('despesa')">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Adicionar</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Modal Nova Meta -->
-    <div class="modal" id="modal-meta">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Nova Meta</h2>
-                <button class="modal-close" onclick="closeModal('meta')">&times;</button>
-            </div>
-            <form class="modal-body" onsubmit="addMeta(event)">
-                <div class="form-group">
-                    <label>Nome da Meta</label>
-                    <input type="text" id="meta-nome" required placeholder="Ex: Viagem">
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Valor Target</label>
-                        <input type="number" id="meta-valor" step="0.01" min="0" required placeholder="0,00">
-                    </div>
-                    <div class="form-group">
-                        <label>Data Limite</label>
-                        <input type="date" id="meta-data" required>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Descrição</label>
-                    <textarea id="meta-desc" rows="2" placeholder="Descrição da meta..."></textarea>
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('meta')">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Criar Meta</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Modal Dizer Não -->
-    <div class="modal" id="modal-nao">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>🙅 Dizer Não</h2>
-                <button class="modal-close" onclick="closeModal('nao')">&times;</button>
-            </div>
-            <form class="modal-body" onsubmit="addNao(event)">
-                <div class="form-group">
-                    <label>O que você recusou?</label>
-                    <input type="text" id="nao-desc" required placeholder="Ex: Cafeteria extra">
-                </div>
-                <div class="form-group">
-                    <label>Valor economizado</label>
-                    <input type="number" id="nao-valor" step="0.01" min="0" required placeholder="0,00">
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('nao')">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Registrar</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Modal API Config -->
-    <div class="modal" id="modal-api-config">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>⚙️ Configuração da API</h2>
-                <button class="modal-close" onclick="closeModal('api-config')">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label>URL da API</label>
-                    <input type="text" id="api-url" placeholder="http://localhost:3000">
-                </div>
-                <div class="form-group">
-                    <label>Token</label>
-                    <input type="text" id="api-token" placeholder="Seu token de acesso">
-                </div>
-                <div class="form-group">
-                    <label>Projeto</label>
-                    <input type="text" id="api-project" placeholder="dinheiro">
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="testApi()">🔌 Testar</button>
-                    <button type="button" class="btn btn-primary" onclick="saveApiConfig()">Salvar</button>
-                </div>
-                <div id="api-status" style="margin-top:12px;font-size:13px"></div>
+            <div class="forum-input-bar">
+                <form class="forum-input-form" onsubmit="handlePost(event)">
+                    <textarea id="post-input" placeholder="Digite sua mensagem..." rows="1" maxlength="2000"></textarea>
+                    <button type="submit" class="btn btn-primary btn-send">Enviar</button>
+                </form>
             </div>
         </div>
     </div>
+</div>
 
-    <!-- Modal Novo Orçamento -->
-    <div class="modal" id="modal-orcamento">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Novo Item de Orçamento</h2>
-                <button class="modal-close" onclick="closeModal('orcamento')">&times;</button>
-            </div>
-            <form class="modal-body" onsubmit="addOrcamento(event)">
-                <div class="form-group">
-                    <label>Descrição</label>
-                    <input type="text" id="orc-desc" required placeholder="Ex: Aluguel">
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Valor</label>
-                        <input type="number" id="orc-valor" step="0.01" min="0" required placeholder="0,00">
-                    </div>
-                    <div class="form-group">
-                        <label>Data</label>
-                        <input type="date" id="orc-data" required>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Categoria</label>
-                        <select id="orc-categoria">
-                            <option value="moradia">Moradia</option>
-                            <option value="alimentacao">Alimentação</option>
-                            <option value="transporte">Transporte</option>
-                            <option value="saude">Saúde</option>
-                            <option value="lazer">Lazer</option>
-                            <option value="educacao">Educação</option>
-                            <option value="investimento">Investimento</option>
-                            <option value="outros">Outros</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Tipo</label>
-                        <select id="orc-tipo">
-                            <option value="receita">Receita</option>
-                            <option value="despesa">Despesa</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('orcamento')">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Adicionar</button>
-                </div>
-            </form>
-        </div>
-    </div>
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
 
-    <!-- Modal Novo Investimento -->
-    <div class="modal" id="modal-investimento">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Novo Investimento</h2>
-                <button class="modal-close" onclick="closeModal('investimento')">&times;</button>
-            </div>
-            <form class="modal-body" onsubmit="addInvestimento(event)">
-                <div class="form-group">
-                    <label>Ticker</label>
-                    <div style="display:flex;gap:8px;position:relative">
-                        <input type="text" id="inv-ticker" required placeholder="Ex: PETR4" style="flex:1;text-transform:uppercase" autocomplete="off">
-                        <button type="button" class="btn btn-sm btn-secondary" onclick="buscarTicker()">🔍</button>
-                        <div id="ticker-suggestions" class="ticker-suggestions"></div>
-                    </div>
-                </div>
-                <div id="ticker-info" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Quantidade</label>
-                        <input type="number" id="inv-qtd" step="1" min="1" required placeholder="100">
-                    </div>
-                    <div class="form-group">
-                        <label>Preço (R$)</label>
-                        <input type="number" id="inv-preco" step="0.01" min="0" required placeholder="25,50">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Data da Compra</label>
-                    <input type="date" id="inv-data" required>
-                </div>
-                <div class="form-group">
-                    <label>Comentários</label>
-                    <textarea id="inv-comentarios" rows="3" placeholder="Por que comprou? Análise..."></textarea>
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('investimento')">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Adicionar</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
-    <script src="js/api.js"></script>
-    <script src="js/app.js"></script>
+<script src="js/api.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>
