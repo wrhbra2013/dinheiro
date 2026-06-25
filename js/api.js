@@ -44,83 +44,229 @@ const ASSETS = [
 const CATEGORIES = ['Geral', 'Renda Fixa', 'Tesouro Direto', 'Renda Variável', 'Criptomoedas'];
 
 const API = {
+    _config: null,
+    _discovering: null,
+
+    get config() {
+        if (!this._config) {
+            try { this._config = JSON.parse(localStorage.getItem('api_config')) || {} }
+            catch { this._config = {} }
+        }
+        return this._config;
+    },
+    set config(v) {
+        this._config = v;
+        localStorage.setItem('api_config', JSON.stringify(v));
+    },
+
+    get baseUrl() { return this.config.baseUrl || '' },
+    get token() { return this.config.token || '' },
+
+    isConfigured() { return !!(this.config.baseUrl && this.config.token) },
+
+    async discover() {
+        if (this._discovering) return this._discovering;
+        this._discovering = (async () => {
+            const urls = [];
+            if (window.API_CONFIG?.baseUrl) urls.push(window.API_CONFIG.baseUrl);
+            const origin = window.location.origin;
+            if (origin) {
+                urls.push(origin + '/dinheiro/api/');
+                urls.push(origin + '/api/');
+                urls.push(origin + '/');
+            }
+            for (const url of urls) {
+                try {
+                    const r = await fetch(url + 'api-key', { signal: AbortSignal.timeout(4000) });
+                    if (r.ok) {
+                        const data = await r.json();
+                        if (data.token) {
+                            this.config = { baseUrl: url, token: data.token };
+                            return true;
+                        }
+                    }
+                } catch {}
+            }
+            return false;
+        })();
+        const ok = await this._discovering;
+        this._discovering = null;
+        return ok;
+    },
+
+    async request(method, path, body) {
+        if (!this.isConfigured()) await this.discover();
+        if (!this.isConfigured()) return { error: 'API não configurada' };
+        const url = `${this.baseUrl}${path}`;
+        const opts = {
+            method,
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.token}` }
+        };
+        if (body) opts.body = JSON.stringify(body);
+        try {
+            const res = await fetch(url, opts);
+            const text = await res.text();
+            try {
+                const data = JSON.parse(text);
+                if (!res.ok) return { error: data.error || `HTTP ${res.status}` };
+                return data;
+            } catch {
+                if (!res.ok) return { error: text || `HTTP ${res.status}` };
+                return text;
+            }
+        } catch (e) {
+            return { error: e.message || 'Erro de conexão' };
+        }
+    },
+
     get categories() { return CATEGORIES },
     get assets() { return ASSETS },
 
-    getUsers() { return DB.get('users') || [] },
-    saveUsers(u) { DB.set('users', u) },
+    // ==== Usuários (API ou localStorage) ====
 
-    getPosts(assetId) {
-        const all = DB.get('posts') || {};
-        return all[assetId] || [];
-    },
-    savePosts(assetId, posts) {
-        const all = DB.get('posts') || {};
-        all[assetId] = posts;
-        DB.set('posts', all);
-    },
-
-    addPost(assetId, userId, userName, message) {
-        const posts = this.getPosts(assetId);
-        posts.unshift({
-            id: Date.now(),
-            userId,
-            userName,
-            message: message.replace(/<[^>]*>/g, '').trim(),
-            createdAt: new Date().toISOString()
-        });
-        this.savePosts(assetId, posts);
-        return posts[0];
-    },
-
-    register(nome, celular) {
-        const users = this.getUsers();
-        if (users.find(u => u.celular === celular)) return { error: 'Celular já cadastrado' };
+    async register(nome, usuario, celular) {
+        if (this.isConfigured()) {
+            return this.request('POST', '/register', { nome, usuario, celular });
+        }
+        const users = this._getUsers();
+        const digito = celular.replace(/\D/g, '');
+        const slug = usuario.replace(/[^a-z0-9._-]/g, '').toLowerCase().trim();
+        if (!slug) return { error: 'Usuário inválido' };
+        if (users.find(u => u.usuario === slug)) return { error: 'Usuário já existe' };
+        if (users.find(u => u.celular === digito)) return { error: 'Celular já cadastrado' };
         const code = String(Math.floor(100000 + Math.random() * 900000));
         const user = {
-            id: Date.now(),
-            nome: nome.replace(/<[^>]*>/g, '').trim(),
-            celular: celular.replace(/\D/g, ''),
-            senha: celular.replace(/\D/g, '').slice(-4),
-            confirmCode: code,
-            confirmed: false,
+            id: Date.now(), nome: nome.replace(/<[^>]*>/g, '').trim(),
+            usuario: slug, celular: digito, senha: digito.slice(-4),
+            confirmCode: code, confirmed: false,
             createdAt: new Date().toISOString()
         };
         users.push(user);
-        this.saveUsers(users);
+        this._saveUsers(users);
         return { user, code };
     },
 
-    confirm(celular, code) {
-        const users = this.getUsers();
+    async confirm(celular, code) {
+        if (this.isConfigured()) {
+            return this.request('POST', '/confirm', { celular, code });
+        }
+        const users = this._getUsers();
         const u = users.find(u => u.celular === celular.replace(/\D/g, ''));
         if (!u) return { error: 'Usuário não encontrado' };
         if (u.confirmed) return { error: 'Usuário já confirmado' };
         if (u.confirmCode !== code.trim()) return { error: 'Código inválido' };
         u.confirmed = true;
-        this.saveUsers(users);
+        this._saveUsers(users);
         return { success: true };
     },
 
-    login(celular, senha) {
-        const users = this.getUsers();
-        const u = users.find(u => u.celular === celular.replace(/\D/g, ''));
-        if (!u) return { error: 'Celular não cadastrado' };
+    async login(usuario, senha) {
+        if (this.isConfigured()) {
+            const r = await this.request('POST', '/login', { usuario, senha });
+            if (r.user) {
+                const key = r.user._id || r.user.id;
+                DB.set('session_user', r.user);
+                DB.set('session_id', key);
+            }
+            return r;
+        }
+        const users = this._getUsers();
+        const slug = usuario.replace(/[^a-z0-9._-]/g, '').toLowerCase().trim();
+        const u = users.find(u => u.usuario === slug);
+        if (!u) return { error: 'Usuário não encontrado' };
         if (!u.confirmed) return { error: 'Confirme seu WhatsApp primeiro' };
         if (u.senha !== senha) return { error: 'Senha incorreta' };
-        DB.set('session', u.id);
+        DB.set('session_id', u.id);
         return { user: u };
     },
 
-    logout() { DB.set('session', null) },
-
-    getSession() {
-        const id = DB.get('session');
-        if (!id) return null;
-        return this.getUsers().find(u => u.id === id) || null;
+    async getMe(userId) {
+        if (this.isConfigured()) {
+            const r = await this.request('GET', `/usuarios/me?id=${userId}`);
+            return r.error ? null : r;
+        }
+        return this._getUsers().find(u => u.id === userId) || null;
     },
 
-    // APIs externas gratuitas
+    logout() {
+        DB.set('session_id', null);
+        DB.set('session_user', null);
+    },
+
+    getSession() {
+        if (this.isConfigured()) {
+            return DB.get('session_user') || null;
+        }
+        const id = DB.get('session_id');
+        if (!id) return null;
+        return this._getUsers().find(u => u.id === id) || null;
+    },
+
+    _getUsers() { return DB.get('users') || [] },
+    _saveUsers(u) { DB.set('users', u) },
+
+    // ==== Mensagens (API ou localStorage) ====
+
+    async getMessages(assetId) {
+        if (this.isConfigured()) {
+            const r = await this.request('GET', `/mensagens/${assetId}`);
+            return r.error ? [] : r;
+        }
+        const all = DB.get('posts') || {};
+        return all[assetId] || [];
+    },
+
+    async addPost(assetId, userId, userName, message) {
+        const msg = message.replace(/<[^>]*>/g, '').trim();
+        if (!msg) return null;
+        if (this.isConfigured()) {
+            const r = await this.request('POST', '/mensagens', {
+                asset: assetId, userId: String(userId), userName, message: msg
+            });
+            return r.error ? null : r;
+        }
+        const all = DB.get('posts') || {};
+        if (!all[assetId]) all[assetId] = [];
+        const post = {
+            id: Date.now(), userId, userName, message: msg, createdAt: new Date().toISOString()
+        };
+        all[assetId].unshift(post);
+        DB.set('posts', all);
+        return post;
+    },
+
+    async deleteMessage(msgId) {
+        if (this.isConfigured()) {
+            return this.request('DELETE', `/mensagens/${msgId}`);
+        }
+        return { error: 'Modo local não suporta exclusão' };
+    },
+
+    // ==== Fóruns dinâmicos ====
+
+    async getForuns() {
+        if (this.isConfigured()) {
+            const r = await this.request('GET', '/foruns');
+            return r.error ? [] : r;
+        }
+        return [];
+    },
+
+    async createForum(nome, icone, descricao, categoria) {
+        if (this.isConfigured()) {
+            return this.request('POST', '/foruns', { nome, icone, descricao, categoria });
+        }
+        return { error: 'API não configurada' };
+    },
+
+    async deleteForum(id) {
+        if (this.isConfigured()) {
+            return this.request('DELETE', `/foruns/${id}`);
+        }
+        return { error: 'API não configurada' };
+    },
+
+    // ==== APIs externas gratuitas ====
     async fetchSelic() {
         try {
             const r = await fetch('https://api.bcb.gov.br/dados/serie/bcdata.sgs.11/dados/ultimos/1');
@@ -128,7 +274,6 @@ const API = {
             return { valor: parseFloat(d[0]?.valor || 0).toFixed(2), data: d[0]?.data || '' };
         } catch { return null }
     },
-
     async fetchCDI() {
         try {
             const r = await fetch('https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados/ultimos/1');
@@ -136,7 +281,6 @@ const API = {
             return { valor: parseFloat(d[0]?.valor || 0).toFixed(2), data: d[0]?.data || '' };
         } catch { return null }
     },
-
     async fetchIPCA() {
         try {
             const r = await fetch('https://api.bcb.gov.br/dados/serie/bcdata.sgs.433/dados/ultimos/1');
@@ -144,7 +288,6 @@ const API = {
             return { valor: parseFloat(d[0]?.valor || 0).toFixed(2), data: d[0]?.data || '' };
         } catch { return null }
     },
-
     async fetchQuote(ticker) {
         try {
             const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}.SA?range=1d&interval=1d`);
@@ -152,15 +295,13 @@ const API = {
             const m = d.chart?.result?.[0]?.meta;
             if (!m) return null;
             return {
-                ticker,
-                name: m.shortName || m.longName || ticker,
+                ticker, name: m.shortName || m.longName || ticker,
                 price: m.regularMarketPrice || m.previousClose || 0,
                 currency: m.currency || 'BRL',
                 change: m.chartPreviousClose ? ((m.regularMarketPrice / m.chartPreviousClose - 1) * 100).toFixed(2) : 0
             };
         } catch { return null }
     },
-
     async fetchCrypto(ticker) {
         try {
             const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}-USD?range=1d&interval=1d`);
@@ -168,41 +309,19 @@ const API = {
             const m = d.chart?.result?.[0]?.meta;
             if (!m) return null;
             return {
-                ticker,
-                name: m.shortName || ticker,
-                price: m.regularMarketPrice || 0,
+                ticker, name: m.shortName || ticker, price: m.regularMarketPrice || 0,
                 change: m.chartPreviousClose ? ((m.regularMarketPrice / m.chartPreviousClose - 1) * 100).toFixed(2) : 0
             };
         } catch { return null }
     },
-
     async fetchIbovespa() {
         try {
             const r = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/^BVSP?range=1d&interval=1d');
             const d = await r.json();
             const m = d.chart?.result?.[0]?.meta;
             if (!m) return null;
-            return {
-                name: 'Ibovespa',
-                price: m.regularMarketPrice || 0,
-                change: m.chartPreviousClose ? ((m.regularMarketPrice / m.chartPreviousClose - 1) * 100).toFixed(2) : 0
-            };
-        } catch { return null }
-    },
-
-    async fetchTesouro() {
-        try {
-            const r = await fetch('https://api.bcb.gov.br/dados/serie/bcdata.sgs.7829/dados/ultimos/1');
-            const d = await r.json();
-            return { valor: parseFloat(d[0]?.valor || 0).toFixed(2), data: d[0]?.data || '' };
-        } catch { return null }
-    },
-
-    async fetchPoupanca() {
-        try {
-            const r = await fetch('https://api.bcb.gov.br/dados/serie/bcdata.sgs.195/dados/ultimos/1');
-            const d = await r.json();
-            return { valor: parseFloat(d[0]?.valor || 0).toFixed(2), data: d[0]?.data || '' };
+            return { name: 'Ibovespa', price: m.regularMarketPrice || 0,
+                change: m.chartPreviousClose ? ((m.regularMarketPrice / m.chartPreviousClose - 1) * 100).toFixed(2) : 0 };
         } catch { return null }
     }
 };

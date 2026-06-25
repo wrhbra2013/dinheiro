@@ -51,9 +51,31 @@ body {
     text-align: center;
     margin-bottom: 32px;
 }
-.auth-logo span { font-size: 48px; display: block; margin-bottom: 8px; }
 .auth-logo h1 { font-size: 24px; }
 .auth-logo p { color: var(--text2); font-size: 14px; margin-top: 4px; }
+
+.logo-3d {
+    width: 72px;
+    height: 72px;
+    margin: 0 auto 12px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #8b8ffa, #6366f1 40%, #4338ca 70%, #1e1b4b);
+    box-shadow:
+        inset -4px -4px 12px rgba(0,0,0,0.5),
+        inset 4px 4px 12px rgba(255,255,255,0.15),
+        0 8px 32px rgba(99,102,241,0.3);
+    position: relative;
+}
+.logo-3d::after {
+    content: '';
+    position: absolute;
+    top: 8%;
+    left: 18%;
+    width: 35%;
+    height: 25%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.5) 0%, transparent 70%);
+}
 
 .auth-tabs {
     display: flex;
@@ -174,6 +196,29 @@ body {
 }
 .forum-header h1 { font-size: 18px; }
 .forum-header-left { display: flex; align-items: center; gap: 12px; }
+
+.logo-3d-small {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: radial-gradient(circle at 35% 30%, #8b8ffa, #6366f1 40%, #4338ca 70%, #1e1b4b);
+    box-shadow:
+        inset -2px -2px 6px rgba(0,0,0,0.5),
+        inset 2px 2px 6px rgba(255,255,255,0.15),
+        0 4px 12px rgba(99,102,241,0.3);
+    position: relative;
+}
+.logo-3d-small::after {
+    content: '';
+    position: absolute;
+    top: 8%;
+    left: 18%;
+    width: 35%;
+    height: 25%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.5) 0%, transparent 70%);
+}
 .forum-header-right { display: flex; align-items: center; gap: 16px; }
 
 .hamburger {
@@ -226,6 +271,17 @@ body {
     display: flex;
     flex: 1;
     overflow: hidden;
+    max-width: 1400px;
+    width: 100%;
+    margin: 0 auto;
+}
+
+/* Forum main wrapper for large screens */
+.forum-main-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
 }
 
 /* Sidebar */
@@ -467,6 +523,117 @@ body {
 .btn-send {
     padding: 10px 24px;
     white-space: nowrap;
+}
+
+/* Delete button */
+.btn-del {
+    background: transparent;
+    border: none;
+    color: var(--text2);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: auto;
+    transition: 0.15s;
+    line-height: 1;
+}
+.btn-del:hover { color: var(--danger); background: rgba(239,68,68,0.12); }
+
+/* Admin panel */
+.admin-panel {
+    background: var(--bg3);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 24px;
+}
+.admin-panel-inner { max-width: 480px; }
+.admin-body {
+    margin-top: 8px;
+    padding: 12px;
+    background: var(--bg);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+}
+.admin-body h4 { font-size: 13px; margin-bottom: 8px; color: var(--text2); }
+.admin-form {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+.admin-form input {
+    flex: 1;
+    min-width: 120px;
+    padding: 6px 10px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 12px;
+    font-family: var(--font);
+}
+.admin-form input:focus { outline: none; border-color: var(--accent); }
+.admin-foruns-list { display: flex; flex-direction: column; gap: 4px; }
+.admin-forum-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--bg3);
+    border-radius: 6px;
+    font-size: 13px;
+}
+.admin-forum-item span { flex: 1; }
+.admin-forum-item .btn-del { font-size: 12px; }
+
+/* Modal */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    backdrop-filter: blur(4px);
+}
+.modal-overlay.active { display: flex; }
+
+.modal-box {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    max-width: 400px;
+    width: 100%;
+    animation: modalIn 0.25s ease;
+}
+@keyframes modalIn {
+    from { opacity: 0; transform: scale(0.92) translateY(12px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.modal-icon { font-size: 28px; }
+.modal-header h3 { font-size: 17px; }
+
+.modal-body {
+    font-size: 14px;
+    color: var(--text2);
+    line-height: 1.6;
+    margin-bottom: 20px;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
 }
 
 /* Overlay */

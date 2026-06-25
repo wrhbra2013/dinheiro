@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clube de Investidores</title>
+    <title>InvestidoresClub</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,8 +16,8 @@
 <div id="auth-section" class="auth-section">
     <div class="auth-container">
         <div class="auth-logo">
-            <span>💰</span>
-            <h1>Clube de Investidores</h1>
+            <div class="logo-3d"></div>
+            <h1>InvestidoresClub</h1>
             <p>Fórum para discutir investimentos</p>
         </div>
 
@@ -31,8 +31,8 @@
         <!-- Login -->
         <form id="auth-form-login" class="auth-form active" onsubmit="handleLogin(event)">
             <div class="form-group">
-                <label>Celular</label>
-                <input type="tel" id="login-celular" placeholder="(11) 99999-9999" required>
+                <label>Usuário</label>
+                <input type="text" id="login-usuario" placeholder="Seu nome de usuário" required>
             </div>
             <div class="form-group">
                 <label>Senha (4 últimos dígitos do celular)</label>
@@ -45,11 +45,15 @@
         <form id="auth-form-register" class="auth-form" onsubmit="handleRegister(event)">
             <div class="form-group">
                 <label>Nome completo</label>
-                <input type="text" id="reg-nome" placeholder="Seu nome" required>
+                <input type="text" id="reg-nome" placeholder="Seu nome" oninput="autoFillUsuario()">
             </div>
             <div class="form-group">
-                <label>Celular (com DDD)</label>
-                <input type="tel" id="reg-celular" placeholder="(11) 99999-9999" required inputmode="numeric">
+                <label>Usuário</label>
+                <input type="text" id="reg-usuario" placeholder="nome.sobrenome" required>
+            </div>
+            <div class="form-group">
+                <label>Celular (com DDI +55)</label>
+                <input type="tel" id="reg-celular" placeholder="+55 (11) 99999-9999" required>
             </div>
             <div class="form-info">
                 <span>🔐</span>
@@ -91,7 +95,8 @@
     <header class="forum-header">
         <button class="hamburger" onclick="toggleSidebar()">☰</button>
         <div class="forum-header-left">
-            <h1>💰 Clube de Investidores</h1>
+            <div class="logo-3d-small"></div>
+            <h1>InvestidoresClub</h1>
         </div>
         <div class="forum-header-right">
             <div class="user-badge">
@@ -104,6 +109,22 @@
             <button class="btn btn-sm btn-secondary" onclick="handleLogout()">Sair</button>
         </div>
     </header>
+
+    <div id="admin-panel" class="admin-panel" style="display:none">
+        <div class="admin-panel-inner">
+            <button class="btn btn-sm btn-secondary" onclick="toggleAdmin()">⚙️ Admin</button>
+            <div id="admin-body" class="admin-body" style="display:none">
+                <h4>Gerenciar Fóruns</h4>
+                <form onsubmit="handleCreateForum(event)" class="admin-form">
+                    <input type="text" id="admin-forum-nome" placeholder="Nome do fórum" required>
+                    <input type="text" id="admin-forum-icone" placeholder="Ícone (emoji)" value="📁" maxlength="2">
+                    <input type="text" id="admin-forum-descricao" placeholder="Descrição">
+                    <button type="submit" class="btn btn-sm btn-primary">Criar Fórum</button>
+                </form>
+                <div id="admin-foruns-list" class="admin-foruns-list"></div>
+            </div>
+        </div>
+    </div>
 
     <div class="macro-bar" id="macro-bar">
         <span>Selic: <strong id="macro-selic">...</strong></span>
@@ -120,6 +141,7 @@
             <nav class="sidebar-nav" id="sidebar-assets"></nav>
         </aside>
 
+        <div class="forum-main-wrap">
         <div class="forum-main" id="forum-main">
             <div class="forum-view-header">
                 <div>
@@ -150,6 +172,22 @@
 
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
 
+<!-- ============ MODAL ============ -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <span class="modal-icon" id="modal-icon">ℹ️</span>
+            <h3 id="modal-title">Aviso</h3>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+        <div class="modal-footer">
+            <button class="btn btn-sm btn-secondary" id="modal-cancel" onclick="closeModal()" style="display:none">Cancelar</button>
+            <button class="btn btn-sm btn-primary" id="modal-confirm" onclick="closeModal()">OK</button>
+        </div>
+    </div>
+</div>
+
+<script src="js/config.js"></script>
 <script src="js/api.js"></script>
 <script src="js/app.js"></script>
 </body>

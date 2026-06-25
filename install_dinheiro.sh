@@ -115,6 +115,8 @@ mkdir -p "$SRC_DIR"
 # .env
 # ---------------------------------------------------------------
 API_TOKEN=$(openssl rand -hex 32)
+MODERATOR_USER="moderador"
+MODERATOR_PASS=$(openssl rand -hex 3 | cut -c1-4)
 cat > "$INSTALL_DIR/.env" <<ENVEOF
 PORT=$APP_PORT
 DB_HOST=db
@@ -123,6 +125,8 @@ DB_NAME=${PNAME}
 DB_USER=postgres
 DB_PASS=wander
 API_TOKEN=${API_TOKEN}
+MODERATOR_USER=${MODERATOR_USER}
+MODERATOR_PASS=${MODERATOR_PASS}
 COMPOSE_PROJECT_NAME=${PNAME}
 ENVEOF
 chmod 600 "$INSTALL_DIR/.env"
@@ -133,7 +137,7 @@ chmod 600 "$INSTALL_DIR/.env"
 # ---------------------------------------------------------------
 cat > "$INSTALL_DIR/package.json" <<'JSONEOF'
 {
-  "name": "api-financeorganizer",
+  "name": "api-clubeinvestidores",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -179,13 +183,106 @@ app.use((req, res, next) => {
 
 const API_TOKEN = process.env.API_TOKEN || '';
 
+async function query(sql, params) {
+  const { rows } = await pool.query(sql, params);
+  return rows;
+}
+
+// ====== Endpoints públicos (sem token) ======
+
+app.get('/api-key', (_, res) => {
+  res.json({ token: API_TOKEN });
+});
+
+app.get('/', (_, res) => res.json({ status: 'OK', project: 'InvestidoresClub' }));
+
+app.get('/health', async (_, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ status: 'healthy', db: 'connected' });
+  } catch { res.status(503).json({ status: 'unhealthy', db: 'disconnected' }); }
+});
+
+// ====== Middleware de autenticação (Bearer token obrigatório) ======
+
 app.use((req, res, next) => {
-  if (req.path === '/' || req.path === '/health') return next();
+  const publicPaths = ['/', '/health', '/api-key'];
+  if (publicPaths.includes(req.path)) return next();
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ') || auth.slice(7) !== API_TOKEN) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   next();
+});
+
+// ====== Endpoints protegidos (exigem token) ======
+
+app.post('/register', async (req, res) => {
+  try {
+    const { nome, usuario, celular } = req.body;
+    if (!nome || !usuario || !celular) return res.status(400).json({ error: 'nome, usuario e celular obrigatórios' });
+    const digito = celular.replace(/\D/g, '');
+    const slug = usuario.replace(/[^a-z0-9._-]/g, '').toLowerCase().trim();
+    if (!slug) return res.status(400).json({ error: 'Usuário inválido' });
+
+    const schema = { nome: '', usuario: '', celular: '', senha: '', confirmCode: '', confirmed: '', createdAt: '', role: '' };
+    await garantirTabela('usuarios', schema);
+    await garantirColunas('usuarios', schema);
+
+    const existente = await query('SELECT _id FROM "usuarios" WHERE celular=$1', [digito]);
+    if (existente.length) return res.status(400).json({ error: 'Celular já cadastrado' });
+    const existUser = await query('SELECT _id FROM "usuarios" WHERE usuario=$1', [slug]);
+    if (existUser.length) return res.status(400).json({ error: 'Usuário já existe' });
+
+    const confirmCode = String(Math.floor(100000 + Math.random() * 900000));
+    const r = await query(
+      `INSERT INTO "usuarios" (nome, usuario, celular, senha, "confirmCode", confirmed, "createdAt", role)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [nome.replace(/<[^>]*>/g, '').trim(), slug, digito, digito.slice(-4), confirmCode, 'false', new Date().toISOString(), 'user']
+    );
+    res.status(201).json({ user: r[0], code: confirmCode });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/confirm', async (req, res) => {
+  try {
+    const { celular, code } = req.body;
+    const digito = celular.replace(/\D/g, '');
+    await garantirTabela('usuarios', { nome: '', usuario: '', celular: '', senha: '', confirmCode: '', confirmed: '', createdAt: '', role: '' });
+    const rows = await query('SELECT * FROM "usuarios" WHERE celular=$1', [digito]);
+    if (!rows.length) return res.status(404).json({ error: 'Usuário não encontrado' });
+    const u = rows[0];
+    if (u.confirmed === 'true') return res.status(400).json({ error: 'Usuário já confirmado' });
+    if (u.confirmcode !== code.trim()) return res.status(400).json({ error: 'Código inválido' });
+    await query('UPDATE "usuarios" SET confirmed=$1 WHERE _id=$2', ['true', u._id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/login', async (req, res) => {
+  try {
+    const { usuario, senha } = req.body;
+    const slug = (usuario || '').replace(/[^a-z0-9._-]/g, '').toLowerCase().trim();
+    if (!slug) return res.status(400).json({ error: 'Usuário obrigatório' });
+    await garantirTabela('usuarios', { nome: '', usuario: '', celular: '', senha: '', confirmCode: '', confirmed: '', createdAt: '', role: '' });
+    const rows = await query('SELECT * FROM "usuarios" WHERE usuario=$1', [slug]);
+    if (!rows.length) return res.status(404).json({ error: 'Usuário não encontrado' });
+    const u = rows[0];
+    if (u.confirmed !== 'true') return res.status(400).json({ error: 'Confirme seu WhatsApp primeiro' });
+    if (u.senha !== senha) return res.status(401).json({ error: 'Senha incorreta' });
+    res.json({ user: u });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/usuarios/me', async (req, res) => {
+  try {
+    const id = parseInt(req.query.id || req.headers['x-user-id'] || 0);
+    if (!id) return res.status(400).json({ error: 'user id required' });
+    await garantirTabela('usuarios', { nome: '', usuario: '', celular: '', senha: '', confirmCode: '', confirmed: '', createdAt: '', role: '' });
+    const rows = await query('SELECT * FROM "usuarios" WHERE _id=$1', [id]);
+    if (!rows.length) return res.status(404).json({ error: 'not found' });
+    res.json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 async function tabelaExiste(tabela) {
@@ -219,15 +316,6 @@ async function garantirTabela(tabela, data) {
   await pool.query(`CREATE TABLE "${tabela}" (_id SERIAL PRIMARY KEY, ${cols.join(', ')})`);
   console.log(`Tabela "${tabela}" criada`);
 }
-
-app.get('/', (_, res) => res.json({ status: 'OK', project: 'FinanceOrganizer' }));
-
-app.get('/health', async (_, res) => {
-  try {
-    await pool.query('SELECT 1');
-    res.json({ status: 'healthy', db: 'connected' });
-  } catch { res.status(503).json({ status: 'unhealthy', db: 'disconnected' }); }
-});
 
 app.get('/:tabela', async (req, res) => {
   const t = req.params.tabela.replace(/[^a-z0-9_]/g, '');
@@ -294,7 +382,106 @@ app.delete('/:tabela/:id', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`FinanceOrganizer API :${PORT}`));
+// ====== Mensagens do Fórum ======
+
+app.get('/mensagens/:asset', async (req, res) => {
+  const asset = req.params.asset.replace(/[^a-z0-9_-]/g, '');
+  if (!asset) return res.status(400).json({ error: 'invalid asset' });
+  try {
+    await garantirTabela('mensagens', { asset: '', userId: '', userName: '', message: '', createdAt: '' });
+    const rows = await query(
+      'SELECT * FROM "mensagens" WHERE asset=$1 ORDER BY _id DESC LIMIT 200', [asset]
+    );
+    res.json(rows);
+  } catch { res.json([]); }
+});
+
+app.post('/mensagens', async (req, res) => {
+  const { asset, userId, userName, message } = req.body;
+  if (!asset || !userId || !message) return res.status(400).json({ error: 'asset, userId, message obrigatórios' });
+  try {
+    await garantirTabela('mensagens', { asset: '', userId: '', userName: '', message: '', createdAt: '' });
+    await garantirColunas('mensagens', { asset: '', userId: '', userName: '', message: '', createdAt: '' });
+    const safeMsg = message.replace(/<[^>]*>/g, '').trim();
+    const rows = await query(
+      `INSERT INTO "mensagens" (asset, "userId", "userName", message, "createdAt")
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [asset, String(userId), userName, safeMsg, new Date().toISOString()]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ====== Fóruns dinâmicos ======
+
+const FORUM_SCHEMA = { nome: '', icone: '', descricao: '', categoria: '', createdAt: '' };
+
+app.get('/foruns', async (_, res) => {
+  try {
+    await garantirTabela('foruns', FORUM_SCHEMA);
+    await garantirColunas('foruns', FORUM_SCHEMA);
+    const rows = await query('SELECT * FROM "foruns" ORDER BY _id ASC');
+    res.json(rows);
+  } catch { res.json([]); }
+});
+
+app.post('/foruns', async (req, res) => {
+  try {
+    const { nome, icone, descricao, categoria } = req.body;
+    if (!nome) return res.status(400).json({ error: 'nome é obrigatório' });
+    await garantirTabela('foruns', FORUM_SCHEMA);
+    await garantirColunas('foruns', FORUM_SCHEMA);
+    const r = await query(
+      `INSERT INTO "foruns" (nome, icone, descricao, categoria, "createdAt")
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [nome.trim(), (icone || '📁'), (descricao || ''), (categoria || 'Personalizado'), new Date().toISOString()]
+    );
+    res.status(201).json(r[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/foruns/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'id inválido' });
+    await pool.query('DELETE FROM "foruns" WHERE _id=$1', [id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ====== Deletar mensagem ======
+
+app.delete('/mensagens/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'id inválido' });
+    await pool.query('DELETE FROM "mensagens" WHERE _id=$1', [id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ====== Seed do moderador ======
+
+async function seedModerator() {
+  try {
+    await garantirColunas('usuarios', { role: '' });
+    const user = process.env.MODERATOR_USER || 'moderador';
+    const pass = process.env.MODERATOR_PASS || '0000';
+    const rows = await query('SELECT _id FROM "usuarios" WHERE usuario=$1', [user]);
+    if (!rows.length) {
+      await query(
+        `INSERT INTO "usuarios" (nome, usuario, celular, senha, "confirmCode", confirmed, "createdAt", role)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        ['Moderador', user, '00000000000', pass, '', 'true', new Date().toISOString(), 'moderator']
+      );
+      console.log(`✓ Moderador criado (${user} / ${pass})`);
+    } else {
+      console.log(`✓ Moderador já existe (${user})`);
+    }
+  } catch (err) { console.error('Seed moderator:', err.message); }
+}
+
+seedModerator().then(() => app.listen(PORT, () => console.log(`Clube Investidores API :${PORT}`)));
 SRVEOF
 
 
@@ -444,16 +631,27 @@ BASE="http://127.0.0.1:$APP_PORT/"
 curl -sf "$BASE" | grep -q '"OK"' && info "GET /     OK" || warn "GET /     falhou"
 curl -sf "${BASE}health" | grep -q '"healthy"' && info "GET /health OK" || warn "GET /health falhou"
 
-AUTH="Authorization: Bearer $API_TOKEN"
-DATA='{"descricao":"Teste install","valor":100,"categoria":"outros","data":"2026-06-21"}'
-R=$(curl -sf -X POST "${BASE}receitas" -H "$AUTH" -H "Content-Type: application/json" -d "$DATA" 2>/dev/null) || R=""
-ID=$(echo "$R" | sed -n 's/.*"_id":\([0-9]*\).*/\1/p')
-if [ -n "$ID" ]; then
-  info "POST   /receitas OK (_id=$ID)"
-  curl -sf "${BASE}receitas" -H "$AUTH" | grep -q "$ID" && info "GET    /receitas OK" || warn "GET    /receitas falhou"
-  curl -sf -X DELETE "${BASE}receitas/$ID" -H "$AUTH" | grep -q '"success"' && info "DELETE /receitas OK" || warn "DELETE /receitas falhou"
+# Test register
+R=$(curl -sf -X POST "${BASE}register" -H "Content-Type: application/json" -d '{"nome":"Teste","celular":"11999999999"}' 2>/dev/null) || R=""
+CODE=$(echo "$R" | sed -n 's/.*"code":"\([0-9]*\)".*/\1/p')
+if [ -n "$CODE" ]; then
+  info "POST /register OK (code=$CODE)"
+  # Test confirm
+  R2=$(curl -sf -X POST "${BASE}confirm" -H "Content-Type: application/json" -d "{\"celular\":\"11999999999\",\"code\":\"$CODE\"}" 2>/dev/null) || R2=""
+  echo "$R2" | grep -q '"success"' && info "POST /confirm OK" || warn "POST /confirm falhou: $R2"
+  # Test login
+  R3=$(curl -sf -X POST "${BASE}login" -H "Content-Type: application/json" -d '{"celular":"11999999999","senha":"9999"}' 2>/dev/null) || R3=""
+  UID=$(echo "$R3" | sed -n 's/.*"_id":\([0-9]*\).*/\1/p')
+  [ -n "$UID" ] && info "POST /login OK (_id=$UID)" || warn "POST /login falhou: $R3"
+
+  AUTH="Authorization: Bearer $API_TOKEN"
+  DATA="{\"asset\":\"geral\",\"userId\":\"$UID\",\"userName\":\"Teste\",\"message\":\"Teste forum\"}"
+  R4=$(curl -sf -X POST "${BASE}mensagens" -H "$AUTH" -H "Content-Type: application/json" -d "$DATA" 2>/dev/null) || R4=""
+  echo "$R4" | grep -q '"message"' && info "POST /mensagens OK" || warn "POST /mensagens falhou: $R4"
+
+  curl -sf "${BASE}mensagens/geral" -H "$AUTH" | grep -q "$UID" && info "GET /mensagens/geral OK" || warn "GET /mensagens/geral falhou"
 else
-  warn "POST   /receitas falhou: $R"
+  warn "POST /register falhou: $R"
 fi
 
 info "Testando via nginx (URL pública)..."
@@ -472,12 +670,18 @@ echo "  Health:    http://api.projetosdinamicos.com.br/$PNAME/health"
 echo "  Porta:     $APP_PORT"
 echo "  Diretório: $INSTALL_DIR"
 echo ""
-echo "  Token:     $API_TOKEN"
+echo "  Token:         $API_TOKEN"
+echo "  Moderador:     $MODERATOR_USER / $MODERATOR_PASS"
 echo ""
-echo "  No Servidor B (frontend estático), configure:"
-echo "    URL da API: https://api.projetosdinamicos.com.br/$PNAME/api"
-echo "    Token:      $API_TOKEN"
-echo "    Projeto:    $PNAME"
+echo "  Configuração de autodescoberta do frontend..."
+cat > "$INSTALL_DIR/../js/config.js" <<CONFIGEOF
+// Gerado automaticamente pela instalação
+// O token é descoberto automaticamente via GET /api-key
+window.API_CONFIG = {
+    baseUrl: 'https://api.projetosdinamicos.com.br/$PNAME/api'
+};
+CONFIGEOF
+echo "  ✓ js/config.js gerado (token será descoberto automaticamente)"
 echo ""
 echo "  Para desinstalar: sudo bash $0 uninstall $INSTALL_DIR"
 echo ""
