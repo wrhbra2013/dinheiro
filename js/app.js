@@ -19,21 +19,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('reg-usuario').addEventListener('input', function () {
         if (this.value.trim()) this.dataset.edited = 'true';
     });
-    // Máscara de telefone com +55 (formata ao sair do campo)
+    // Máscara de telefone +55 (xx) xxxxx-xxxx ao digitar
     const phoneInput = document.getElementById('reg-celular');
-    phoneInput.addEventListener('focus', function () {
-        if (!this.value) this.value = '+55 ';
-    });
-    phoneInput.addEventListener('blur', function () {
-        let raw = this.value.replace(/\D/g, '');
-        if (!raw.startsWith('55')) raw = '55' + raw;
-        raw = raw.slice(0, 13);
-        if (raw.length <= 2) { this.value = ''; return; }
-        let fmt = '+55 ';
-        fmt += '(' + raw.slice(2, 4);
-        if (raw.length > 4) fmt += ') ' + raw.slice(4, 9);
-        if (raw.length > 9) fmt += '-' + raw.slice(9, 13);
+    phoneInput.addEventListener('input', function () {
+        const caret = this.selectionStart || 0;
+        const rawOld = this.value.slice(0, caret).replace(/\D/g, '').length;
+        const digits = this.value.replace(/\D/g, '');
+        const raw = (digits.startsWith('55') ? digits : '55' + digits).slice(0, 13);
+        let fmt = '';
+        if (raw.length > 2) {
+            fmt = '+55 (' + raw.slice(2, 4);
+            if (raw.length > 4) fmt += ') ' + raw.slice(4, 9);
+            if (raw.length > 9) fmt += '-' + raw.slice(9, 13);
+        } else {
+            fmt = raw;
+        }
+        if (fmt === this.value) return;
         this.value = fmt;
+        let c = -2;
+        for (let i = 0; i < fmt.length; i++) {
+            if (fmt[i] >= '0' && fmt[i] <= '9') c++;
+            if (c >= rawOld) { this.setSelectionRange(i + 1, i + 1); return; }
+        }
+        this.setSelectionRange(fmt.length, fmt.length);
     });
 });
 
