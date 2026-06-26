@@ -323,18 +323,7 @@ const API = {
             currency: meta.currency || 'BRL',
             change: meta.chartPreviousClose ? ((meta.regularMarketPrice / meta.chartPreviousClose - 1) * 100).toFixed(2) : 0
         };
-        try {
-            const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}.SA?range=1d&interval=1d`);
-            const d2 = await r.json();
-            const m = d2.chart?.result?.[0]?.meta;
-            if (!m) return null;
-            return {
-                ticker, name: m.shortName || m.longName || ticker,
-                price: m.regularMarketPrice || m.previousClose || 0,
-                currency: m.currency || 'BRL',
-                change: m.chartPreviousClose ? ((m.regularMarketPrice / m.chartPreviousClose - 1) * 100).toFixed(2) : 0
-            };
-        } catch { return null }
+        return null;
     },
     async fetchCrypto(ticker) {
         const meta = await this._yahooMeta(`${ticker}-USD`);
@@ -342,29 +331,13 @@ const API = {
             ticker, name: meta.shortName || ticker, price: meta.regularMarketPrice || 0,
             change: meta.chartPreviousClose ? ((meta.regularMarketPrice / meta.chartPreviousClose - 1) * 100).toFixed(2) : 0
         };
-        try {
-            const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}-USD?range=1d&interval=1d`);
-            const d2 = await r.json();
-            const m = d2.chart?.result?.[0]?.meta;
-            if (!m) return null;
-            return {
-                ticker, name: m.shortName || ticker, price: m.regularMarketPrice || 0,
-                change: m.chartPreviousClose ? ((m.regularMarketPrice / m.chartPreviousClose - 1) * 100).toFixed(2) : 0
-            };
-        } catch { return null }
+        return null;
     },
     async fetchIbovespa() {
         const meta = await this._yahooMeta('^BVSP');
         if (meta) return { name: 'Ibovespa', price: meta.regularMarketPrice || 0,
             change: meta.chartPreviousClose ? ((meta.regularMarketPrice / meta.chartPreviousClose - 1) * 100).toFixed(2) : 0 };
-        try {
-            const r = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/^BVSP?range=1d&interval=1d');
-            const d2 = await r.json();
-            const m = d2.chart?.result?.[0]?.meta;
-            if (!m) return null;
-            return { name: 'Ibovespa', price: m.regularMarketPrice || 0,
-                change: m.chartPreviousClose ? ((m.regularMarketPrice / m.chartPreviousClose - 1) * 100).toFixed(2) : 0 };
-        } catch { return null }
+        return null;
     }
 };
 
