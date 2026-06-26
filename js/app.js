@@ -159,7 +159,13 @@ async function sendWhatsAppCode(celular, code) {
         el.innerHTML = `<p>📱 Não foi possível enviar via WhatsApp. <button class="btn btn-sm btn-secondary" onclick="sendWhatsAppCode('${celular}', '${code}')">Tentar novamente</button></p>`;
         return;
     }
-    el.innerHTML = `<p>✅ Código enviado para seu WhatsApp! <button class="btn btn-sm btn-secondary" onclick="sendWhatsAppCode('${celular}', '${code}')">Reenviar</button></p>`;
+    if (r.waLink) {
+        el.innerHTML = `<p>📱 Clique no link para enviar o código pelo WhatsApp: <br> <a href="${r.waLink}" target="_blank" class="btn btn-sm btn-primary">Abrir WhatsApp</a></p>
+        <p><button class="btn btn-sm btn-secondary" onclick="sendWhatsAppCode('${celular}', '${code}')">Reenviar</button></p>`;
+        window.open(r.waLink, '_blank');
+    } else {
+        el.innerHTML = `<p>✅ Código enviado para seu WhatsApp! <button class="btn btn-sm btn-secondary" onclick="sendWhatsAppCode('${celular}', '${code}')">Reenviar</button></p>`;
+    }
 }
 
 async function handleConfirm(e) {
