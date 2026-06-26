@@ -6,7 +6,7 @@ set -eu
 # Uso: sudo bash install_dinheiro.sh [uninstall]
 # ==============================================================
 
-SCRIPT_DIR="$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 NGINX_AVAILABLE="/etc/nginx/sites-available"
 NGINX_ENABLED="/etc/nginx/sites-enabled"
 
@@ -112,11 +112,15 @@ mkdir -p "$SRC_DIR"
 
 
 # ---------------------------------------------------------------
-# .env
+# .env (preserva token/senha existentes)
 # ---------------------------------------------------------------
-API_TOKEN=$(openssl rand -hex 32)
-MODERATOR_USER="moderador"
-MODERATOR_PASS=$(openssl rand -hex 3 | cut -c1-4)
+if [ -f "$INSTALL_DIR/.env" ]; then
+  . "$INSTALL_DIR/.env"
+  info ".env existente preservado"
+fi
+API_TOKEN="${API_TOKEN:-$(openssl rand -hex 32)}"
+MODERATOR_USER="${MODERATOR_USER:-moderador}"
+MODERATOR_PASS="${MODERATOR_PASS:-$(openssl rand -hex 3 | cut -c1-4)}"
 cat > "$INSTALL_DIR/.env" <<ENVEOF
 PORT=$APP_PORT
 DB_HOST=db
@@ -254,7 +258,7 @@ app.post('/confirm', async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'Usuário não encontrado' });
     const u = rows[0];
     if (u.confirmed === 'true') return res.status(400).json({ error: 'Usuário já confirmado' });
-    if (u.confirmcode !== code.trim()) return res.status(400).json({ error: 'Código inválido' });
+    if (u.confirmCode !== code.trim()) return res.status(400).json({ error: 'Código inválido' });
     await query('UPDATE "usuarios" SET confirmed=$1 WHERE _id=$2', ['true', u._id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -637,12 +641,10 @@ nginx -t 2>/dev/null && sudo systemctl reload nginx 2>/dev/null && info "Nginx c
 # ---------------------------------------------------------------
 # Docker build + up
 # ---------------------------------------------------------------
+SKIP_BUILD=false
 if [ -f "$INSTALL_DIR/docker-compose.yml" ] && [ -d "$SRC_DIR" ] && [ -f "$INSTALL_DIR/.env" ]; then
-  info "Projeto já instalado — apenas subindo containers..."
-  $DCC -f "$INSTALL_DIR/docker-compose.yml" --project-name "$PNAME" up -d || error "Falha ao subir containers"
-  info "Logs dos containers:"
-  $DCC -f "$INSTALL_DIR/docker-compose.yml" --project-name "$PNAME" logs --tail=20
-  exit 0
+  info "Projeto já instalado — arquivos atualizados, reconstruindo..."
+  SKIP_BUILD=true
 fi
 
 info "Build da imagem..."
@@ -674,25 +676,25 @@ BASE="http://127.0.0.1:$APP_PORT/"
 curl -sf "$BASE" | grep -q '"OK"' && info "GET /     OK" || warn "GET /     falhou"
 curl -sf "${BASE}health" | grep -q '"healthy"' && info "GET /health OK" || warn "GET /health falhou"
 
+AUTH="Authorization: Bearer $API_TOKEN"
 # Test register
-R=$(curl -sf -X POST "${BASE}register" -H "Content-Type: application/json" -d '{"nome":"Teste","celular":"11999999999"}' 2>/dev/null) || R=""
+R=$(curl -s -X POST "${BASE}register" -H "$AUTH" -H "Content-Type: application/json" -d '{"nome":"Teste","usuario":"teste","celular":"11999999999"}' 2>/dev/null) || R=""
 CODE=$(echo "$R" | sed -n 's/.*"code":"\([0-9]*\)".*/\1/p')
 if [ -n "$CODE" ]; then
   info "POST /register OK (code=$CODE)"
   # Test confirm
-  R2=$(curl -sf -X POST "${BASE}confirm" -H "Content-Type: application/json" -d "{\"celular\":\"11999999999\",\"code\":\"$CODE\"}" 2>/dev/null) || R2=""
+  R2=$(curl -s -X POST "${BASE}confirm" -H "$AUTH" -H "Content-Type: application/json" -d "{\"celular\":\"11999999999\",\"code\":\"$CODE\"}" 2>/dev/null) || R2=""
   echo "$R2" | grep -q '"success"' && info "POST /confirm OK" || warn "POST /confirm falhou: $R2"
   # Test login
-  R3=$(curl -sf -X POST "${BASE}login" -H "Content-Type: application/json" -d '{"celular":"11999999999","senha":"9999"}' 2>/dev/null) || R3=""
-  UID=$(echo "$R3" | sed -n 's/.*"_id":\([0-9]*\).*/\1/p')
-  [ -n "$UID" ] && info "POST /login OK (_id=$UID)" || warn "POST /login falhou: $R3"
+  R3=$(curl -s -X POST "${BASE}login" -H "$AUTH" -H "Content-Type: application/json" -d '{"usuario":"teste","senha":"9999"}' 2>/dev/null) || R3=""
+  USER_ID=$(echo "$R3" | sed -n 's/.*"_id":\([0-9]*\).*/\1/p')
+  [ -n "$USER_ID" ] && info "POST /login OK (_id=$USER_ID)" || warn "POST /login falhou: $R3"
 
-  AUTH="Authorization: Bearer $API_TOKEN"
-  DATA="{\"asset\":\"geral\",\"userId\":\"$UID\",\"userName\":\"Teste\",\"message\":\"Teste forum\"}"
-  R4=$(curl -sf -X POST "${BASE}mensagens" -H "$AUTH" -H "Content-Type: application/json" -d "$DATA" 2>/dev/null) || R4=""
+  DATA="{\"asset\":\"geral\",\"userId\":\"$USER_ID\",\"userName\":\"Teste\",\"message\":\"Teste forum\"}"
+  R4=$(curl -s -X POST "${BASE}mensagens" -H "$AUTH" -H "Content-Type: application/json" -d "$DATA" 2>/dev/null) || R4=""
   echo "$R4" | grep -q '"message"' && info "POST /mensagens OK" || warn "POST /mensagens falhou: $R4"
 
-  curl -sf "${BASE}mensagens/geral" -H "$AUTH" | grep -q "$UID" && info "GET /mensagens/geral OK" || warn "GET /mensagens/geral falhou"
+  curl -sf "${BASE}mensagens/geral" -H "$AUTH" | grep -q "$USER_ID" && info "GET /mensagens/geral OK" || warn "GET /mensagens/geral falhou"
 else
   warn "POST /register falhou: $R"
 fi
@@ -716,8 +718,9 @@ echo ""
 echo "  Token:         $API_TOKEN"
 echo "  Moderador:     $MODERATOR_USER / $MODERATOR_PASS"
 echo ""
+mkdir -p "$SCRIPT_DIR/js"
 echo "  Configuração de autodescoberta do frontend..."
-cat > "$INSTALL_DIR/../js/config.js" <<CONFIGEOF
+cat > "$SCRIPT_DIR/js/config.js" <<CONFIGEOF
 // Gerado automaticamente pela instalação
 // O token é descoberto automaticamente via GET /api-key
 window.API_CONFIG = {
