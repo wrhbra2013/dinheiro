@@ -166,7 +166,7 @@ body {
 .btn-sm { padding: 6px 12px; font-size: 12px; }
 .btn-block { width: 100%; }
 
-.confirm-simulated {
+.confirm-sending {
     margin-top: 20px;
     padding: 16px;
     background: var(--bg3);
@@ -175,7 +175,7 @@ body {
     font-size: 13px;
     color: var(--text2);
 }
-.confirm-simulated strong { font-size: 20px; color: var(--accent); display: block; margin: 8px 0; }
+.confirm-sending .btn-sm { margin-top: 8px; }
 
 /* ============ FORUM LAYOUT ============ */
 .forum-section {

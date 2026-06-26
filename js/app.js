@@ -143,15 +143,23 @@ async function handleRegister(e) {
     }
     registerData = { celular, code: result.code, userId: result.user?._id || result.user?.id };
     document.getElementById('confirm-phone').textContent = '+55 ' + celular.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3');
-    document.getElementById('confirm-code-display').textContent = result.code;
     document.getElementById('confirm-code').value = '';
     document.getElementById('confirm-error').textContent = '';
+    document.getElementById('confirm-sending').innerHTML = '<p>📱 Enviando código via WhatsApp...</p>';
     showConfirm();
+    sendWhatsAppCode(celular, result.code);
 }
 
-function resendCode() {
-    document.getElementById('confirm-code-display').textContent = registerData.code;
-    document.getElementById('confirm-error').textContent = 'Código reenviado via WhatsApp (simulado)';
+async function sendWhatsAppCode(celular, code) {
+    const el = document.getElementById('confirm-sending');
+    const num = celular.replace(/\D/g, '');
+    const msg = `Seu código de confirmação no InvestidoresClub é: ${code}`;
+    const r = await API.sendWhatsApp(num, msg);
+    if (r.error) {
+        el.innerHTML = `<p>📱 Não foi possível enviar via WhatsApp. <button class="btn btn-sm btn-secondary" onclick="sendWhatsAppCode('${celular}', '${code}')">Tentar novamente</button></p>`;
+        return;
+    }
+    el.innerHTML = `<p>✅ Código enviado para seu WhatsApp! <button class="btn btn-sm btn-secondary" onclick="sendWhatsAppCode('${celular}', '${code}')">Reenviar</button></p>`;
 }
 
 async function handleConfirm(e) {

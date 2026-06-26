@@ -266,33 +266,67 @@ const API = {
         return { error: 'API não configurada' };
     },
 
+    // ==== WhatsApp ====
+
+    async sendWhatsApp(celular, mensagem) {
+        if (this.isConfigured()) {
+            return this.request('POST', '/whatsapp/send', { celular, mensagem });
+        }
+        console.log(`[WHATSAPP] Para: ${celular} | ${mensagem}`);
+        return { success: true, note: 'modo local' };
+    },
+
     // ==== APIs externas gratuitas ====
+    async _proxyFetch(path) {
+        if (this.isConfigured()) {
+            const r = await this.request('GET', path);
+            return r.error ? null : r;
+        }
+        return null;
+    },
     async fetchSelic() {
+        const d = await this._proxyFetch('/proxy/bcb/11');
+        if (d?.length) return { valor: parseFloat(d[0].valor || 0).toFixed(2), data: d[0].data || '' };
         try {
             const r = await fetch('https://api.bcb.gov.br/dados/serie/bcdata.sgs.11/dados/ultimos/1');
-            const d = await r.json();
-            return { valor: parseFloat(d[0]?.valor || 0).toFixed(2), data: d[0]?.data || '' };
+            const d2 = await r.json();
+            return { valor: parseFloat(d2[0]?.valor || 0).toFixed(2), data: d2[0]?.data || '' };
         } catch { return null }
     },
     async fetchCDI() {
+        const d = await this._proxyFetch('/proxy/bcb/12');
+        if (d?.length) return { valor: parseFloat(d[0].valor || 0).toFixed(2), data: d[0].data || '' };
         try {
             const r = await fetch('https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados/ultimos/1');
-            const d = await r.json();
-            return { valor: parseFloat(d[0]?.valor || 0).toFixed(2), data: d[0]?.data || '' };
+            const d2 = await r.json();
+            return { valor: parseFloat(d2[0]?.valor || 0).toFixed(2), data: d2[0]?.data || '' };
         } catch { return null }
     },
     async fetchIPCA() {
+        const d = await this._proxyFetch('/proxy/bcb/433');
+        if (d?.length) return { valor: parseFloat(d[0].valor || 0).toFixed(2), data: d[0].data || '' };
         try {
             const r = await fetch('https://api.bcb.gov.br/dados/serie/bcdata.sgs.433/dados/ultimos/1');
-            const d = await r.json();
-            return { valor: parseFloat(d[0]?.valor || 0).toFixed(2), data: d[0]?.data || '' };
+            const d2 = await r.json();
+            return { valor: parseFloat(d2[0]?.valor || 0).toFixed(2), data: d2[0]?.data || '' };
         } catch { return null }
     },
+    async _yahooMeta(ticker) {
+        const d = await this._proxyFetch(`/proxy/yahoo/chart/${encodeURIComponent(ticker)}`);
+        return d?.chart?.result?.[0]?.meta || null;
+    },
     async fetchQuote(ticker) {
+        const meta = await this._yahooMeta(`${ticker}.SA`);
+        if (meta) return {
+            ticker, name: meta.shortName || meta.longName || ticker,
+            price: meta.regularMarketPrice || meta.previousClose || 0,
+            currency: meta.currency || 'BRL',
+            change: meta.chartPreviousClose ? ((meta.regularMarketPrice / meta.chartPreviousClose - 1) * 100).toFixed(2) : 0
+        };
         try {
             const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}.SA?range=1d&interval=1d`);
-            const d = await r.json();
-            const m = d.chart?.result?.[0]?.meta;
+            const d2 = await r.json();
+            const m = d2.chart?.result?.[0]?.meta;
             if (!m) return null;
             return {
                 ticker, name: m.shortName || m.longName || ticker,
@@ -303,10 +337,15 @@ const API = {
         } catch { return null }
     },
     async fetchCrypto(ticker) {
+        const meta = await this._yahooMeta(`${ticker}-USD`);
+        if (meta) return {
+            ticker, name: meta.shortName || ticker, price: meta.regularMarketPrice || 0,
+            change: meta.chartPreviousClose ? ((meta.regularMarketPrice / meta.chartPreviousClose - 1) * 100).toFixed(2) : 0
+        };
         try {
             const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}-USD?range=1d&interval=1d`);
-            const d = await r.json();
-            const m = d.chart?.result?.[0]?.meta;
+            const d2 = await r.json();
+            const m = d2.chart?.result?.[0]?.meta;
             if (!m) return null;
             return {
                 ticker, name: m.shortName || ticker, price: m.regularMarketPrice || 0,
@@ -315,10 +354,13 @@ const API = {
         } catch { return null }
     },
     async fetchIbovespa() {
+        const meta = await this._yahooMeta('^BVSP');
+        if (meta) return { name: 'Ibovespa', price: meta.regularMarketPrice || 0,
+            change: meta.chartPreviousClose ? ((meta.regularMarketPrice / meta.chartPreviousClose - 1) * 100).toFixed(2) : 0 };
         try {
             const r = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/^BVSP?range=1d&interval=1d');
-            const d = await r.json();
-            const m = d.chart?.result?.[0]?.meta;
+            const d2 = await r.json();
+            const m = d2.chart?.result?.[0]?.meta;
             if (!m) return null;
             return { name: 'Ibovespa', price: m.regularMarketPrice || 0,
                 change: m.chartPreviousClose ? ((m.regularMarketPrice / m.chartPreviousClose - 1) * 100).toFixed(2) : 0 };

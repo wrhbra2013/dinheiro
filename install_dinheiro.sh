@@ -127,6 +127,7 @@ DB_PASS=wander
 API_TOKEN=${API_TOKEN}
 MODERATOR_USER=${MODERATOR_USER}
 MODERATOR_PASS=${MODERATOR_PASS}
+#WHATSAPP_API_URL=http://whatsapp:8080/message/send
 COMPOSE_PROJECT_NAME=${PNAME}
 ENVEOF
 chmod 600 "$INSTALL_DIR/.env"
@@ -458,6 +459,48 @@ app.delete('/mensagens/:id', async (req, res) => {
     await pool.query('DELETE FROM "mensagens" WHERE _id=$1', [id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ====== WhatsApp ======
+
+app.post('/whatsapp/send', async (req, res) => {
+  try {
+    const { celular, mensagem } = req.body;
+    if (!celular || !mensagem) return res.status(400).json({ error: 'celular e mensagem obrigatórios' });
+    const num = celular.replace(/\D/g, '');
+    const waApi = process.env.WHATSAPP_API_URL;
+    if (waApi) {
+      const r = await fetch(waApi, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number: num, text: mensagem })
+      });
+      return res.json(await r.json());
+    }
+    console.log(`[WHATSAPP] ${num}: ${mensagem}`);
+    res.json({ success: true, waLink: `https://wa.me/55${num}?text=${encodeURIComponent(mensagem)}` });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ====== CORS proxy para Yahoo Finance ======
+
+app.get('/proxy/yahoo/chart/:ticker', async (req, res) => {
+  try {
+    const ticker = req.params.ticker.replace(/[^a-zA-Z0-9^.]/g, '');
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?range=1d&interval=1d`;
+    const r = await fetch(url);
+    const data = await r.json();
+    res.json(data);
+  } catch (err) { res.status(502).json({ error: err.message }); }
+});
+
+app.get('/proxy/bcb/:serie', async (req, res) => {
+  try {
+    const serie = req.params.serie.replace(/[^0-9]/g, '');
+    const r = await fetch(`https://api.bcb.gov.br/dados/serie/bcdata.sgs.${serie}/dados/ultimos/1`);
+    const data = await r.json();
+    res.json(data);
+  } catch (err) { res.status(502).json({ error: err.message }); }
 });
 
 // ====== Seed do moderador ======
