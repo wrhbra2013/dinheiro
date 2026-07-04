@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestidoresClub</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
+    <title>Dinheiro — Orçamento e Patrimônio</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💵</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -12,177 +12,207 @@
 </head>
 <body>
 
-<!-- ============ AUTH SECTION ============ -->
-<div id="auth-section" class="auth-section">
-    <div class="auth-container">
-        <div class="auth-logo">
-            <div class="logo-3d"></div>
-            <h1>InvestidoresClub</h1>
-            <p>Fórum para discutir investimentos</p>
+<div id="app">
+    <!-- ============ SIDEBAR ============ -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-icon">💰</div>
+            <div class="brand-text">
+                <strong>Dinheiro</strong>
+                <small>Orçamento & Patrimônio</small>
+            </div>
         </div>
-
-        <div class="auth-tabs">
-            <button class="auth-tab active" id="auth-tab-login" onclick="toggleAuthTab('login')">Entrar</button>
-            <button class="auth-tab" id="auth-tab-register" onclick="toggleAuthTab('register')">Cadastrar</button>
+        <nav class="sidebar-nav">
+            <button class="nav-item active" data-view="dashboard" onclick="navigate('dashboard')">
+                <span class="nav-icon">📊</span> Dashboard
+            </button>
+            <button class="nav-item" data-view="transacoes" onclick="navigate('transacoes')">
+                <span class="nav-icon">💳</span> Transações
+            </button>
+            <button class="nav-item" data-view="orcamento" onclick="navigate('orcamento')">
+                <span class="nav-icon">📋</span> Orçamento
+            </button>
+            <button class="nav-item" data-view="metas" onclick="navigate('metas')">
+                <span class="nav-icon">🎯</span> Metas
+            </button>
+            <button class="nav-item" data-view="patrimonio" onclick="navigate('patrimonio')">
+                <span class="nav-icon">🏦</span> Patrimônio
+            </button>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="user-badge-sidebar" id="user-badge">
+                <span class="user-avatar-sm" id="user-avatar">A</span>
+                <span id="user-name-sidebar">Admin</span>
+            </div>
+            <button class="btn btn-sm btn-secondary" onclick="navigate('config')">⚙️</button>
         </div>
+    </aside>
 
-        <div id="auth-error" class="auth-error"></div>
+    <!-- ============ OVERLAY MOBILE ============ -->
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
 
-        <!-- Login -->
-        <form id="auth-form-login" class="auth-form active" onsubmit="handleLogin(event)">
-            <div class="form-group">
-                <label>Usuário</label>
-                <input type="text" id="login-usuario" placeholder="Seu nome de usuário" required>
+    <!-- ============ MAIN ============ -->
+    <main class="main-content">
+
+        <!-- ===== HEADER ===== -->
+        <header class="topbar">
+            <button class="hamburger" onclick="toggleSidebar()">☰</button>
+            <h2 id="page-title">Dashboard</h2>
+            <div class="topbar-right">
+                <span class="month-picker" id="month-picker">
+                    <button class="btn btn-sm btn-secondary" onclick="changeMonth(-1)">◀</button>
+                    <span id="current-month" class="current-month"></span>
+                    <button class="btn btn-sm btn-secondary" onclick="changeMonth(1)">▶</button>
+                </span>
             </div>
-            <div class="form-group">
-                <label>Senha (4 últimos dígitos do celular)</label>
-                <input type="password" id="login-senha" placeholder="Digite sua senha" required maxlength="4" inputmode="numeric">
-            </div>
-            <button type="submit" class="btn btn-primary btn-block">Entrar</button>
-        </form>
+        </header>
 
-        <!-- Register -->
-        <form id="auth-form-register" class="auth-form" onsubmit="handleRegister(event)">
-            <div class="form-group">
-                <label>Nome completo</label>
-                <input type="text" id="reg-nome" placeholder="Seu nome" oninput="autoFillUsuario()">
-            </div>
-            <div class="form-group">
-                <label>Usuário</label>
-                <input type="text" id="reg-usuario" placeholder="nome.sobrenome" required>
-            </div>
-            <div class="form-group">
-                <label>Celular (com DDI +55)</label>
-                <input type="tel" id="reg-celular" placeholder="+55 (11) 99999-9999" required>
-            </div>
-            <div class="form-info">
-                <span>🔐</span>
-                <span>Sua senha será os <strong>4 últimos dígitos</strong> do seu celular</span>
-            </div>
-            <button type="submit" class="btn btn-primary btn-block">Cadastrar</button>
-        </form>
-    </div>
-</div>
-
-<!-- ============ CONFIRM SECTION ============ -->
-<div id="confirm-section" class="auth-section">
-    <div class="auth-container">
-        <div class="auth-logo">
-            <span>📱</span>
-            <h1>Confirme seu WhatsApp</h1>
-            <p>Enviamos um código para <strong id="confirm-phone"></strong></p>
-        </div>
-
-        <div id="confirm-error" class="auth-error"></div>
-
-        <form onsubmit="handleConfirm(event)">
-            <div class="form-group">
-                <label>Código de confirmação</label>
-                <input type="text" id="confirm-code" placeholder="000000" required maxlength="6" inputmode="numeric" autocomplete="one-time-code">
-            </div>
-            <button type="submit" class="btn btn-primary btn-block">Confirmar</button>
-        </form>
-
-        <div class="confirm-sending" id="confirm-sending">
-            <p>📱 Enviando código via WhatsApp...</p>
-        </div>
-    </div>
-</div>
-
-<!-- ============ FORUM SECTION ============ -->
-<div id="forum-section" class="forum-section">
-    <header class="forum-header">
-        <button class="hamburger" onclick="toggleSidebar()">☰</button>
-        <div class="forum-header-left">
-            <div class="logo-3d-small"></div>
-            <h1>InvestidoresClub</h1>
-        </div>
-        <div class="forum-header-right">
-            <div class="user-badge">
-                <span class="user-avatar" id="user-avatar"></span>
-                <div class="user-info">
-                    <strong id="user-name"></strong>
-                    <small id="user-phone"></small>
+        <!-- ===== DASHBOARD VIEW ===== -->
+        <section id="view-dashboard" class="view active">
+            <div class="dashboard-grid">
+                <div class="card card-saldo" id="card-saldo">
+                    <div class="card-label">Saldo do Mês</div>
+                    <div class="card-value" id="dash-saldo">R$ 0,00</div>
+                    <div class="card-sub">
+                        <span>Receitas: <strong id="dash-receitas">R$ 0</strong></span>
+                        <span>Despesas: <strong id="dash-despesas">R$ 0</strong></span>
+                    </div>
                 </div>
-            </div>
-            <button class="btn btn-sm btn-secondary" onclick="handleLogout()">Sair</button>
-        </div>
-    </header>
-
-    <div id="admin-panel" class="admin-panel" style="display:none">
-        <div class="admin-panel-inner">
-            <button class="btn btn-sm btn-secondary" onclick="toggleAdmin()">⚙️ Admin</button>
-            <div id="admin-body" class="admin-body" style="display:none">
-                <h4>Gerenciar Fóruns</h4>
-                <form onsubmit="handleCreateForum(event)" class="admin-form">
-                    <input type="text" id="admin-forum-nome" placeholder="Nome do fórum" required>
-                    <input type="text" id="admin-forum-icone" placeholder="Ícone (emoji)" value="📁" maxlength="2">
-                    <input type="text" id="admin-forum-descricao" placeholder="Descrição">
-                    <button type="submit" class="btn btn-sm btn-primary">Criar Fórum</button>
-                </form>
-                <div id="admin-foruns-list" class="admin-foruns-list"></div>
-            </div>
-        </div>
-    </div>
-
-    <div class="macro-bar" id="macro-bar">
-        <span>Selic: <strong id="macro-selic">...</strong></span>
-        <span>CDI: <strong id="macro-cdi">...</strong></span>
-        <span>IPCA: <strong id="macro-ipca">...</strong></span>
-        <span>Ibovespa: <strong id="macro-ibov">...</strong></span>
-    </div>
-
-    <div class="forum-body">
-        <aside class="sidebar" id="forum-sidebar">
-            <div class="sidebar-header">
-                <h2>📊 Ativos</h2>
-            </div>
-            <nav class="sidebar-nav" id="sidebar-assets"></nav>
-        </aside>
-
-        <div class="forum-main-wrap">
-        <div class="forum-main" id="forum-main">
-            <div class="forum-view-header">
-                <div>
-                    <h2 id="forum-title">💬 Fórum Geral</h2>
-                    <span class="forum-category" id="forum-category">Geral</span>
+                <div class="card card-patrimonio">
+                    <div class="card-label">Patrimônio Líquido</div>
+                    <div class="card-value" id="dash-patrimonio">R$ 0,00</div>
+                    <div class="card-sub">Ativos - Passivos</div>
                 </div>
-                <div class="forum-members">
-                    <span>👥</span>
-                    <span id="forum-online">1</span> online
+                <div class="card card-metas">
+                    <div class="card-label">Progresso das Metas</div>
+                    <div class="card-value" id="dash-metas-pct">0%</div>
+                    <div class="progress-bar"><div class="progress-fill" id="dash-metas-bar" style="width:0%"></div></div>
+                </div>
+                <div class="card card-orcamento">
+                    <div class="card-label">Orçamento</div>
+                    <div class="card-value" id="dash-orcamento-pct">0%</div>
+                    <div class="progress-bar"><div class="progress-fill" id="dash-orcamento-bar" style="width:0%"></div></div>
                 </div>
             </div>
 
-            <div class="asset-data" id="asset-data"></div>
-
-            <div class="forum-posts" id="forum-posts">
-                <div class="forum-empty">Selecione um ativo para começar</div>
+            <div class="dashboard-grid-2">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Gastos por Categoria</h3>
+                    </div>
+                    <div class="card-body" id="dash-categorias">
+                        <div class="empty-state">Nenhum gasto registrado</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Metas</h3>
+                        <button class="btn btn-sm btn-secondary" onclick="navigate('metas')">Ver todas</button>
+                    </div>
+                    <div class="card-body" id="dash-metas">
+                        <div class="empty-state">Nenhuma meta cadastrada</div>
+                    </div>
+                </div>
             </div>
+        </section>
 
-            <div class="forum-input-bar">
-                <form class="forum-input-form" onsubmit="handlePost(event)">
-                    <textarea id="post-input" placeholder="Digite sua mensagem..." rows="1" maxlength="2000"></textarea>
-                    <button type="submit" class="btn btn-primary btn-send">Enviar</button>
-                </form>
+        <!-- ===== TRANSACOES VIEW ===== -->
+        <section id="view-transacoes" class="view">
+            <div class="view-toolbar">
+                <button class="btn btn-primary" onclick="openTransacaoModal()">+ Nova Transação</button>
+                <div class="toolbar-tabs">
+                    <button class="tab-btn active" data-filter="todas" onclick="filterTransacoes('todas')">Todas</button>
+                    <button class="tab-btn" data-filter="receita" onclick="filterTransacoes('receita')">Receitas</button>
+                    <button class="tab-btn" data-filter="despesa" onclick="filterTransacoes('despesa')">Despesas</button>
+                </div>
             </div>
-        </div>
-    </div>
+            <div class="card">
+                <div class="card-body" id="transacoes-list">
+                    <div class="empty-state">Nenhuma transação neste mês</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== ORCAMENTO VIEW ===== -->
+        <section id="view-orcamento" class="view">
+            <div class="view-toolbar">
+                <h3>Orçamento Mensal</h3>
+                <button class="btn btn-primary" onclick="openCategoriaModal()">+ Nova Categoria</button>
+            </div>
+            <div class="card">
+                <div class="card-body" id="orcamento-list">
+                    <div class="empty-state">Nenhuma categoria configurada</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== METAS VIEW ===== -->
+        <section id="view-metas" class="view">
+            <div class="view-toolbar">
+                <h3>Metas Financeiras</h3>
+                <button class="btn btn-primary" onclick="openMetaModal()">+ Nova Meta</button>
+            </div>
+            <div class="card">
+                <div class="card-body" id="metas-list">
+                    <div class="empty-state">Nenhuma meta cadastrada</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== PATRIMONIO VIEW ===== -->
+        <section id="view-patrimonio" class="view">
+            <div class="view-toolbar">
+                <h3>Patrimônio</h3>
+                <button class="btn btn-primary" onclick="openPatrimonioModal()">+ Novo Item</button>
+            </div>
+            <div class="dashboard-grid-2">
+                <div class="card">
+                    <div class="card-header"><h3>Ativos</h3></div>
+                    <div class="card-body" id="patrimonio-ativos">
+                        <div class="empty-state">Nenhum ativo cadastrado</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h3>Passivos</h3></div>
+                    <div class="card-body" id="patrimonio-passivos">
+                        <div class="empty-state">Nenhum passivo cadastrado</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== CONFIG VIEW ===== -->
+        <section id="view-config" class="view">
+            <div class="card">
+                <div class="card-header"><h3>Configuração</h3></div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>Token da API</label>
+                        <input type="text" id="config-token" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label>URL da API</label>
+                        <input type="text" id="config-url" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label>Versão</label>
+                        <input type="text" value="2.0.0 — Orçamento e Patrimônio" readonly>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
 </div>
-
-<div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
 
 <!-- ============ MODAL ============ -->
-<div class="modal-overlay" id="modal-overlay" onclick="closeModal()">
-    <div class="modal-box" onclick="event.stopPropagation()">
+<div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal-box">
         <div class="modal-header">
-            <span class="modal-icon" id="modal-icon">ℹ️</span>
-            <h3 id="modal-title">Aviso</h3>
+            <h3 id="modal-title">Título</h3>
+            <button class="modal-close" onclick="closeModal()">✕</button>
         </div>
         <div class="modal-body" id="modal-body"></div>
-        <div class="modal-footer">
-            <button class="btn btn-sm btn-secondary" id="modal-cancel" onclick="closeModal()" style="display:none">Cancelar</button>
-            <button class="btn btn-sm btn-primary" id="modal-confirm" onclick="closeModal()">OK</button>
-        </div>
     </div>
 </div>
 

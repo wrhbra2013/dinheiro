@@ -2,7 +2,7 @@
 set -eu
 
 # ==============================================================
-# Instalação — API FinanceOrganizer (Docker + PostgreSQL)
+# Instalação — API Dinheiro (Orçamento + Patrimônio Pessoal)
 # Uso: sudo bash install_dinheiro.sh [uninstall]
 # ==============================================================
 
@@ -119,7 +119,7 @@ if [ -f "$INSTALL_DIR/.env" ]; then
   info ".env existente preservado"
 fi
 API_TOKEN="${API_TOKEN:-$(openssl rand -hex 32)}"
-MODERATOR_USER="${MODERATOR_USER:-moderador}"
+MODERATOR_USER="${MODERATOR_USER:-admin}"
 MODERATOR_PASS="${MODERATOR_PASS:-$(openssl rand -hex 3 | cut -c1-4)}"
 cat > "$INSTALL_DIR/.env" <<ENVEOF
 PORT=$APP_PORT
@@ -129,9 +129,8 @@ DB_NAME=${PNAME}
 DB_USER=postgres
 DB_PASS=wander
 API_TOKEN=${API_TOKEN}
-MODERATOR_USER=${MODERATOR_USER}
-MODERATOR_PASS=${MODERATOR_PASS}
-#WHATSAPP_API_URL=http://whatsapp:8080/message/send
+ADMIN_USER=${MODERATOR_USER}
+ADMIN_PASS=${MODERATOR_PASS}
 COMPOSE_PROJECT_NAME=${PNAME}
 ENVEOF
 chmod 600 "$INSTALL_DIR/.env"
@@ -142,8 +141,8 @@ chmod 600 "$INSTALL_DIR/.env"
 # ---------------------------------------------------------------
 cat > "$INSTALL_DIR/package.json" <<'JSONEOF'
 {
-  "name": "api-clubeinvestidores",
-  "version": "1.0.0",
+  "name": "api-dinheiro",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
     "start": "node src/server.js"
@@ -157,7 +156,7 @@ JSONEOF
 
 
 # ---------------------------------------------------------------
-# src/server.js  —  API auto-create tables
+# src/server.js  —  API de Orçamento e Patrimônio Pessoal
 # ---------------------------------------------------------------
 cat > "$SRC_DIR/server.js" <<'SRVEOF'
 const { Pool } = require('pg');
@@ -199,7 +198,7 @@ app.get('/api-key', (_, res) => {
   res.json({ token: API_TOKEN });
 });
 
-app.get('/', (_, res) => res.json({ status: 'OK', project: 'InvestidoresClub' }));
+app.get('/', (_, res) => res.json({ status: 'OK', project: 'Dinheiro - Orçamento e Patrimônio' }));
 
 app.get('/health', async (_, res) => {
   try {
@@ -220,75 +219,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// ====== Endpoints protegidos (exigem token) ======
-
-app.post('/register', async (req, res) => {
-  try {
-    const { nome, usuario, celular } = req.body;
-    if (!nome || !usuario || !celular) return res.status(400).json({ error: 'nome, usuario e celular obrigatórios' });
-    const digito = celular.replace(/\D/g, '');
-    const slug = usuario.replace(/[^a-z0-9._-]/g, '').toLowerCase().trim();
-    if (!slug) return res.status(400).json({ error: 'Usuário inválido' });
-
-    const schema = { nome: '', usuario: '', celular: '', senha: '', confirmCode: '', confirmed: '', createdAt: '', role: '' };
-    await garantirTabela('usuarios', schema);
-    await garantirColunas('usuarios', schema);
-
-    const existente = await query('SELECT _id FROM "usuarios" WHERE celular=$1', [digito]);
-    if (existente.length) return res.status(400).json({ error: 'Celular já cadastrado' });
-    const existUser = await query('SELECT _id FROM "usuarios" WHERE usuario=$1', [slug]);
-    if (existUser.length) return res.status(400).json({ error: 'Usuário já existe' });
-
-    const confirmCode = String(Math.floor(100000 + Math.random() * 900000));
-    const r = await query(
-      `INSERT INTO "usuarios" (nome, usuario, celular, senha, "confirmCode", confirmed, "createdAt", role)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [nome.replace(/<[^>]*>/g, '').trim(), slug, digito, digito.slice(-4), confirmCode, 'false', new Date().toISOString(), 'user']
-    );
-    res.status(201).json({ user: r[0], code: confirmCode });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/confirm', async (req, res) => {
-  try {
-    const { celular, code } = req.body;
-    const digito = celular.replace(/\D/g, '');
-    await garantirTabela('usuarios', { nome: '', usuario: '', celular: '', senha: '', confirmCode: '', confirmed: '', createdAt: '', role: '' });
-    const rows = await query('SELECT * FROM "usuarios" WHERE celular=$1', [digito]);
-    if (!rows.length) return res.status(404).json({ error: 'Usuário não encontrado' });
-    const u = rows[0];
-    if (u.confirmed === 'true') return res.status(400).json({ error: 'Usuário já confirmado' });
-    if (u.confirmCode !== code.trim()) return res.status(400).json({ error: 'Código inválido' });
-    await query('UPDATE "usuarios" SET confirmed=$1 WHERE _id=$2', ['true', u._id]);
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/login', async (req, res) => {
-  try {
-    const { usuario, senha } = req.body;
-    const slug = (usuario || '').replace(/[^a-z0-9._-]/g, '').toLowerCase().trim();
-    if (!slug) return res.status(400).json({ error: 'Usuário obrigatório' });
-    await garantirTabela('usuarios', { nome: '', usuario: '', celular: '', senha: '', confirmCode: '', confirmed: '', createdAt: '', role: '' });
-    const rows = await query('SELECT * FROM "usuarios" WHERE usuario=$1', [slug]);
-    if (!rows.length) return res.status(404).json({ error: 'Usuário não encontrado' });
-    const u = rows[0];
-    if (u.confirmed !== 'true') return res.status(400).json({ error: 'Confirme seu WhatsApp primeiro' });
-    if (u.senha !== senha) return res.status(401).json({ error: 'Senha incorreta' });
-    res.json({ user: u });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/usuarios/me', async (req, res) => {
-  try {
-    const id = parseInt(req.query.id || req.headers['x-user-id'] || 0);
-    if (!id) return res.status(400).json({ error: 'user id required' });
-    await garantirTabela('usuarios', { nome: '', usuario: '', celular: '', senha: '', confirmCode: '', confirmed: '', createdAt: '', role: '' });
-    const rows = await query('SELECT * FROM "usuarios" WHERE _id=$1', [id]);
-    if (!rows.length) return res.status(404).json({ error: 'not found' });
-    res.json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
+// ====== Dynamic table helpers ======
 
 async function tabelaExiste(tabela) {
   const { rows } = await pool.query(
@@ -321,6 +252,8 @@ async function garantirTabela(tabela, data) {
   await pool.query(`CREATE TABLE "${tabela}" (_id SERIAL PRIMARY KEY, ${cols.join(', ')})`);
   console.log(`Tabela "${tabela}" criada`);
 }
+
+// ====== Endpoints genéricos CRUD dinâmico ======
 
 app.get('/:tabela', async (req, res) => {
   const t = req.params.tabela.replace(/[^a-z0-9_]/g, '');
@@ -387,148 +320,168 @@ app.delete('/:tabela/:id', async (req, res) => {
   }
 });
 
-// ====== Mensagens do Fórum ======
+// ====== Endpoints analíticos ======
 
-app.get('/mensagens/:asset', async (req, res) => {
-  const asset = req.params.asset.replace(/[^a-z0-9_-]/g, '');
-  if (!asset) return res.status(400).json({ error: 'invalid asset' });
+app.get('/api/resumo', async (req, res) => {
   try {
-    await garantirTabela('mensagens', { asset: '', userId: '', userName: '', message: '', createdAt: '' });
+    const mesRef = req.query.mes || new Date().toISOString().slice(0, 7);
+    await garantirTabela('transacoes', { tipo: '', categoria: '', valor: '', data: '', descricao: '' });
+    const receitas = await query(
+      `SELECT COALESCE(SUM(CAST(valor AS DECIMAL)), 0) as total FROM "transacoes"
+       WHERE tipo='receita' AND data LIKE $1`, [mesRef + '%']
+    );
+    const despesas = await query(
+      `SELECT COALESCE(SUM(CAST(valor AS DECIMAL)), 0) as total FROM "transacoes"
+       WHERE tipo='despesa' AND data LIKE $1`, [mesRef + '%']
+    );
+    const receitaTotal = parseFloat(receitas[0]?.total || 0);
+    const despesaTotal = parseFloat(despesas[0]?.total || 0);
+    await garantirTabela('metas', { nome: '', valor_alvo: '', valor_atual: '', data_alvo: '', icone: '' });
+    const metas = await query('SELECT * FROM "metas"');
+    const totalAlvo = metas.reduce((s, m) => s + parseFloat(m.valor_alvo || 0), 0);
+    const totalAtual = metas.reduce((s, m) => s + parseFloat(m.valor_atual || 0), 0);
+    await garantirTabela('patrimonio', { tipo: '', nome: '', valor: '', categoria: '', data: '' });
+    const ativos = await query(`SELECT COALESCE(SUM(CAST(valor AS DECIMAL)), 0) as total FROM "patrimonio" WHERE tipo='ativo'`);
+    const passivos = await query(`SELECT COALESCE(SUM(CAST(valor AS DECIMAL)), 0) as total FROM "patrimonio" WHERE tipo='passivo'`);
+    res.json({
+      mes: mesRef,
+      receitas: receitaTotal,
+      despesas: despesaTotal,
+      saldo: receitaTotal - despesaTotal,
+      patrimonio_liquido: parseFloat(ativos[0]?.total || 0) - parseFloat(passivos[0]?.total || 0),
+      progresso_metas: totalAlvo > 0 ? Math.round((totalAtual / totalAlvo) * 100) : 0
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/transacoes/:mes', async (req, res) => {
+  try {
+    const mes = req.params.mes.replace(/[^0-9-]/g, '');
+    await garantirTabela('transacoes', { tipo: '', categoria: '', valor: '', data: '', descricao: '' });
     const rows = await query(
-      'SELECT * FROM "mensagens" WHERE asset=$1 ORDER BY _id DESC LIMIT 200', [asset]
+      `SELECT * FROM "transacoes" WHERE data LIKE $1 ORDER BY data DESC, _id DESC`, [mes + '%']
     );
     res.json(rows);
   } catch { res.json([]); }
 });
 
-app.post('/mensagens', async (req, res) => {
-  const { asset, userId, userName, message } = req.body;
-  if (!asset || !userId || !message) return res.status(400).json({ error: 'asset, userId, message obrigatórios' });
+app.get('/api/gastos-por-categoria/:mes', async (req, res) => {
   try {
-    await garantirTabela('mensagens', { asset: '', userId: '', userName: '', message: '', createdAt: '' });
-    await garantirColunas('mensagens', { asset: '', userId: '', userName: '', message: '', createdAt: '' });
-    const safeMsg = message.replace(/<[^>]*>/g, '').trim();
-    const rows = await query(
-      `INSERT INTO "mensagens" (asset, "userId", "userName", message, "createdAt")
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [asset, String(userId), userName, safeMsg, new Date().toISOString()]
+    const mes = req.params.mes.replace(/[^0-9-]/g, '');
+    await garantirTabela('transacoes', { tipo: '', categoria: '', valor: '', data: '', descricao: '' });
+    await garantirTabela('categorias', { nome: '', tipo: '', orcamento_mensal: '', icone: '' });
+    const gastos = await query(
+      `SELECT categoria, SUM(CAST(valor AS DECIMAL)) as total FROM "transacoes"
+       WHERE tipo='despesa' AND data LIKE $1 GROUP BY categoria`, [mes + '%']
     );
-    res.status(201).json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// ====== Fóruns dinâmicos ======
-
-const FORUM_SCHEMA = { nome: '', icone: '', descricao: '', categoria: '', createdAt: '' };
-
-app.get('/foruns', async (_, res) => {
-  try {
-    await garantirTabela('foruns', FORUM_SCHEMA);
-    await garantirColunas('foruns', FORUM_SCHEMA);
-    const rows = await query('SELECT * FROM "foruns" ORDER BY _id ASC');
-    res.json(rows);
+    const categorias = await query('SELECT * FROM "categorias"');
+    const resultado = categorias.map(c => {
+      const g = gastos.find(x => x.categoria === c.nome);
+      return {
+        id: c._id,
+        nome: c.nome,
+        icone: c.icone || '📦',
+        gasto: g ? parseFloat(g.total) : 0,
+        orcamento: parseFloat(c.orcamento_mensal || 0),
+        progresso: parseFloat(c.orcamento_mensal || 0) > 0
+          ? Math.round((parseFloat(g?.total || 0) / parseFloat(c.orcamento_mensal)) * 100)
+          : 0
+      };
+    });
+    res.json(resultado);
   } catch { res.json([]); }
 });
 
-app.post('/foruns', async (req, res) => {
+app.get('/api/patrimonio/historico', async (req, res) => {
   try {
-    const { nome, icone, descricao, categoria } = req.body;
-    if (!nome) return res.status(400).json({ error: 'nome é obrigatório' });
-    await garantirTabela('foruns', FORUM_SCHEMA);
-    await garantirColunas('foruns', FORUM_SCHEMA);
-    const r = await query(
-      `INSERT INTO "foruns" (nome, icone, descricao, categoria, "createdAt")
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [nome.trim(), (icone || '📁'), (descricao || ''), (categoria || 'Personalizado'), new Date().toISOString()]
-    );
-    res.status(201).json(r[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.delete('/foruns/:id', async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: 'id inválido' });
-    await pool.query('DELETE FROM "foruns" WHERE _id=$1', [id]);
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// ====== Deletar mensagem ======
-
-app.delete('/mensagens/:id', async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: 'id inválido' });
-    await pool.query('DELETE FROM "mensagens" WHERE _id=$1', [id]);
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// ====== WhatsApp ======
-
-app.post('/whatsapp/send', async (req, res) => {
-  try {
-    const { celular, mensagem } = req.body;
-    if (!celular || !mensagem) return res.status(400).json({ error: 'celular e mensagem obrigatórios' });
-    const num = celular.replace(/\D/g, '');
-    const waApi = process.env.WHATSAPP_API_URL;
-    if (waApi) {
-      const r = await fetch(waApi, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ number: num, text: mensagem })
-      });
-      return res.json(await r.json());
+    const limite = parseInt(req.query.limite || '12');
+    await garantirTabela('patrimonio', { tipo: '', nome: '', valor: '', categoria: '', data: '' });
+    const rows = await query(`SELECT * FROM "patrimonio" ORDER BY data DESC, _id DESC LIMIT $1`, [limite * 10]);
+    const meses = {};
+    for (const r of rows) {
+      const mes = (r.data || '').slice(0, 7);
+      if (!mes) continue;
+      if (!meses[mes]) meses[mes] = { ativos: 0, passivos: 0 };
+      const v = parseFloat(r.valor || 0);
+      if (r.tipo === 'ativo') meses[mes].ativos += v;
+      else if (r.tipo === 'passivo') meses[mes].passivos += v;
     }
-    console.log(`[WHATSAPP] ${num}: ${mensagem}`);
-    res.json({ success: true, waLink: `https://wa.me/55${num}?text=${encodeURIComponent(mensagem)}` });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    const historico = Object.entries(meses)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-limite)
+      .map(([mes, vals]) => ({
+        mes, ativos: vals.ativos, passivos: vals.passivos,
+        patrimonio: vals.ativos - vals.passivos
+      }));
+    res.json(historico);
+  } catch { res.json([]); }
 });
 
-// ====== CORS proxy para Yahoo Finance ======
-
-app.get('/proxy/yahoo/chart/:ticker', async (req, res) => {
+app.get('/api/metas/progresso', async (req, res) => {
   try {
-    const ticker = req.params.ticker.replace(/[^a-zA-Z0-9^.]/g, '');
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?range=1d&interval=1d`;
-    const r = await fetch(url);
-    const data = await r.json();
-    res.json(data);
-  } catch (err) { res.status(502).json({ error: err.message }); }
+    await garantirTabela('metas', { nome: '', valor_alvo: '', valor_atual: '', data_alvo: '', icone: '' });
+    const rows = await query('SELECT * FROM "metas" ORDER BY _id ASC');
+    const metas = rows.map(m => ({
+      _id: m._id,
+      nome: m.nome,
+      icone: m.icone || '🎯',
+      valor_alvo: parseFloat(m.valor_alvo || 0),
+      valor_atual: parseFloat(m.valor_atual || 0),
+      progresso: parseFloat(m.valor_alvo || 0) > 0
+        ? Math.min(100, Math.round((parseFloat(m.valor_atual || 0) / parseFloat(m.valor_alvo || 0)) * 100))
+        : 0,
+      data_alvo: m.data_alvo || ''
+    }));
+    res.json(metas);
+  } catch { res.json([]); }
 });
 
-app.get('/proxy/bcb/:serie', async (req, res) => {
-  try {
-    const serie = req.params.serie.replace(/[^0-9]/g, '');
-    const r = await fetch(`https://api.bcb.gov.br/dados/serie/bcdata.sgs.${serie}/dados/ultimos/1`);
-    const data = await r.json();
-    res.json(data);
-  } catch (err) { res.status(502).json({ error: err.message }); }
-});
+// ====== Seed do admin ======
 
-// ====== Seed do moderador ======
-
-async function seedModerator() {
+async function seedAdmin() {
   try {
+    await garantirTabela('usuarios', { nome: '', usuario: '', celular: '', senha: '', role: '', createdAt: '' });
     await garantirColunas('usuarios', { role: '' });
-    const user = process.env.MODERATOR_USER || 'moderador';
-    const pass = process.env.MODERATOR_PASS || '0000';
+    const user = process.env.ADMIN_USER || 'admin';
+    const pass = process.env.ADMIN_PASS || 'admin';
     const rows = await query('SELECT _id FROM "usuarios" WHERE usuario=$1', [user]);
     if (!rows.length) {
       await query(
-        `INSERT INTO "usuarios" (nome, usuario, celular, senha, "confirmCode", confirmed, "createdAt", role)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        ['Moderador', user, '00000000000', pass, '', 'true', new Date().toISOString(), 'moderator']
+        `INSERT INTO "usuarios" (nome, usuario, celular, senha, role, "createdAt")
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        ['Administrador', user, '00000000000', pass, 'admin', new Date().toISOString()]
       );
-      console.log(`✓ Moderador criado (${user} / ${pass})`);
+      console.log(`✓ Admin criado (${user} / ${pass})`);
     } else {
-      console.log(`✓ Moderador já existe (${user})`);
+      console.log(`✓ Admin já existe (${user})`);
     }
-  } catch (err) { console.error('Seed moderator:', err.message); }
+    // Cria categorias padrão se não existirem
+    await garantirTabela('categorias', { nome: '', tipo: '', orcamento_mensal: '', icone: '' });
+    const cats = await query('SELECT _id FROM "categorias"');
+    if (!cats.length) {
+      const padrao = [
+        ['Moradia', 'despesa', '1500', '🏠'],
+        ['Alimentação', 'despesa', '800', '🍽️'],
+        ['Transporte', 'despesa', '400', '🚗'],
+        ['Saúde', 'despesa', '300', '🏥'],
+        ['Educação', 'despesa', '200', '📚'],
+        ['Lazer', 'despesa', '300', '🎮'],
+        ['Assinaturas', 'despesa', '100', '📺'],
+        ['Salário', 'receita', '', '💰'],
+        ['Freelance', 'receita', '', '💻'],
+      ];
+      for (const [nome, tipo, orc, icone] of padrao) {
+        await query(
+          `INSERT INTO "categorias" (nome, tipo, orcamento_mensal, icone) VALUES ($1,$2,$3,$4)`,
+          [nome, tipo, orc, icone]
+        );
+      }
+      console.log('✓ Categorias padrão criadas');
+    }
+  } catch (err) { console.error('Seed admin:', err.message); }
 }
 
-seedModerator().then(() => app.listen(PORT, () => console.log(`Clube Investidores API :${PORT}`)));
+seedAdmin().then(() => app.listen(PORT, () => console.log(`Dinheiro API :${PORT}`)));
 SRVEOF
 
 
@@ -602,7 +555,6 @@ COMPOSEEOF
 # ---------------------------------------------------------------
 info "Configurando nginx..."
 
-# Cria arquivo de configuracao separado para os locations do dinheiro
 DINHEIRO_NGINX_CONF="/etc/nginx/${PNAME}-locations.conf"
 
 cat > "$DINHEIRO_NGINX_CONF" <<NGINXEOF
@@ -624,7 +576,6 @@ location /${PNAME}/health {
 }
 NGINXEOF
 
-# Adiciona include nos server blocks do api.projetosdinamicos.com.br
 if [ -f "$NGINX_AVAILABLE/default" ]; then
   if ! grep -q "${PNAME}-locations.conf" "$NGINX_AVAILABLE/default"; then
     sed -i "/^\s*server_name api\.projetosdinamicos\.com\.br;$/a\    include ${DINHEIRO_NGINX_CONF};" "$NGINX_AVAILABLE/default"
@@ -677,27 +628,36 @@ curl -sf "$BASE" | grep -q '"OK"' && info "GET /     OK" || warn "GET /     falh
 curl -sf "${BASE}health" | grep -q '"healthy"' && info "GET /health OK" || warn "GET /health falhou"
 
 AUTH="Authorization: Bearer $API_TOKEN"
-# Test register
-R=$(curl -s -X POST "${BASE}register" -H "$AUTH" -H "Content-Type: application/json" -d '{"nome":"Teste","usuario":"teste","celular":"11999999999"}' 2>/dev/null) || R=""
-CODE=$(echo "$R" | sed -n 's/.*"code":"\([0-9]*\)".*/\1/p')
-if [ -n "$CODE" ]; then
-  info "POST /register OK (code=$CODE)"
-  # Test confirm
-  R2=$(curl -s -X POST "${BASE}confirm" -H "$AUTH" -H "Content-Type: application/json" -d "{\"celular\":\"11999999999\",\"code\":\"$CODE\"}" 2>/dev/null) || R2=""
-  echo "$R2" | grep -q '"success"' && info "POST /confirm OK" || warn "POST /confirm falhou: $R2"
-  # Test login
-  R3=$(curl -s -X POST "${BASE}login" -H "$AUTH" -H "Content-Type: application/json" -d '{"usuario":"teste","senha":"9999"}' 2>/dev/null) || R3=""
-  USER_ID=$(echo "$R3" | sed -n 's/.*"_id":\([0-9]*\).*/\1/p')
-  [ -n "$USER_ID" ] && info "POST /login OK (_id=$USER_ID)" || warn "POST /login falhou: $R3"
 
-  DATA="{\"asset\":\"geral\",\"userId\":\"$USER_ID\",\"userName\":\"Teste\",\"message\":\"Teste forum\"}"
-  R4=$(curl -s -X POST "${BASE}mensagens" -H "$AUTH" -H "Content-Type: application/json" -d "$DATA" 2>/dev/null) || R4=""
-  echo "$R4" | grep -q '"message"' && info "POST /mensagens OK" || warn "POST /mensagens falhou: $R4"
+# Test categorias
+R=$(curl -s -X POST "${BASE}categorias" -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"nome":"Teste Orçamento","tipo":"despesa","orcamento_mensal":"500","icone":"🧪"}' 2>/dev/null) || R=""
+echo "$R" | grep -q '"nome"' && info "POST /categorias OK" || warn "POST /categorias falhou: $R"
 
-  curl -sf "${BASE}mensagens/geral" -H "$AUTH" | grep -q "$USER_ID" && info "GET /mensagens/geral OK" || warn "GET /mensagens/geral falhou"
+# Test transacao
+R2=$(curl -s -X POST "${BASE}transacoes" -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"tipo":"despesa","categoria":"Teste Orçamento","valor":"100","data":"2026-07-04","descricao":"Teste"}' 2>/dev/null) || R2=""
+echo "$R2" | grep -q '"tipo"' && info "POST /transacoes OK" || warn "POST /transacoes falhou: $R2"
+
+# Test resumo
+curl -sf "${BASE}api/resumo" -H "$AUTH" | grep -q '"mes"' && info "GET /api/resumo OK" || warn "GET /api/resumo falhou"
+
+# Test endpoints analíticos
+curl -sf "${BASE}api/gastos-por-categoria/2026-07" -H "$AUTH" | grep -q '\['
+if [ $? -eq 0 ]; then
+  info "GET /api/gastos-por-categoria OK"
 else
-  warn "POST /register falhou: $R"
+  warn "GET /api/gastos-por-categoria falhou"
 fi
+
+# Test transacoes do mes
+curl -sf "${BASE}api/transacoes/2026-07" -H "$AUTH" | grep -q '\['
+if [ $? -eq 0 ]; then
+  info "GET /api/transacoes OK"
+else
+  warn "GET /api/transacoes/2026-07 falhou"
+fi
+
 
 info "Testando via nginx (URL pública)..."
 PUBLIC_API="https://api.projetosdinamicos.com.br/$PNAME/api/"
@@ -716,18 +676,17 @@ echo "  Porta:     $APP_PORT"
 echo "  Diretório: $INSTALL_DIR"
 echo ""
 echo "  Token:         $API_TOKEN"
-echo "  Moderador:     $MODERATOR_USER / $MODERATOR_PASS"
+echo "  Admin:         $ADMIN_USER / $ADMIN_PASS"
 echo ""
 mkdir -p "$SCRIPT_DIR/js"
 echo "  Configuração de autodescoberta do frontend..."
 cat > "$SCRIPT_DIR/js/config.js" <<CONFIGEOF
 // Gerado automaticamente pela instalação
-// O token é descoberto automaticamente via GET /api-key
 window.API_CONFIG = {
     baseUrl: 'https://api.projetosdinamicos.com.br/$PNAME/api'
 };
 CONFIGEOF
-echo "  ✓ js/config.js gerado (token será descoberto automaticamente)"
+echo "  ✓ js/config.js gerado"
 echo ""
 echo "  Para desinstalar: sudo bash $0 uninstall $INSTALL_DIR"
 echo ""

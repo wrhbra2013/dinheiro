@@ -14,35 +14,6 @@ const DB = {
     }
 };
 
-const ASSETS = [
-    { id: 'geral', name: 'Fórum Geral', icon: '💬', category: 'Geral' },
-    { id: 'cdi', name: 'CDI', icon: '📊', category: 'Renda Fixa' },
-    { id: 'cdb', name: 'CDB', icon: '🏦', category: 'Renda Fixa' },
-    { id: 'lci', name: 'LCI', icon: '🏠', category: 'Renda Fixa' },
-    { id: 'lca', name: 'LCA', icon: '🌾', category: 'Renda Fixa' },
-    { id: 'lc', name: 'LC (Letra de Câmbio)', icon: '📄', category: 'Renda Fixa' },
-    { id: 'cri', name: 'CRI', icon: '📋', category: 'Renda Fixa' },
-    { id: 'cra', name: 'CRA', icon: '📋', category: 'Renda Fixa' },
-    { id: 'debentures', name: 'Debêntures', icon: '📜', category: 'Renda Fixa' },
-    { id: 'lf', name: 'LF (Letra Financeira)', icon: '💰', category: 'Renda Fixa' },
-    { id: 'poupanca', name: 'Poupança', icon: '🐖', category: 'Renda Fixa' },
-    { id: 'tesouro-selic', name: 'Tesouro Selic', icon: '🇧🇷', category: 'Tesouro Direto' },
-    { id: 'tesouro-prefixado', name: 'Tesouro Prefixado', icon: '📈', category: 'Tesouro Direto' },
-    { id: 'tesouro-ipca', name: 'Tesouro IPCA+', icon: '📊', category: 'Tesouro Direto' },
-    { id: 'acoes', name: 'Ações', icon: '📈', category: 'Renda Variável' },
-    { id: 'fiis', name: 'FIIs', icon: '🏢', category: 'Renda Variável' },
-    { id: 'etfs', name: 'ETFs', icon: '📊', category: 'Renda Variável' },
-    { id: 'bdrs', name: 'BDRs', icon: '🌎', category: 'Renda Variável' },
-    { id: 'indices', name: 'Índices', icon: '📉', category: 'Renda Variável' },
-    { id: 'derivativos', name: 'Derivativos', icon: '⚡', category: 'Renda Variável' },
-    { id: 'fundos', name: 'Fundos de Investimento', icon: '📁', category: 'Renda Variável' },
-    { id: 'bitcoin', name: 'Bitcoin', icon: '₿', category: 'Criptomoedas' },
-    { id: 'altcoins', name: 'Altcoins', icon: '🪙', category: 'Criptomoedas' },
-    { id: 'stablecoins', name: 'Stablecoins', icon: '💲', category: 'Criptomoedas' },
-];
-
-const CATEGORIES = ['Geral', 'Renda Fixa', 'Tesouro Direto', 'Renda Variável', 'Criptomoedas'];
-
 const API = {
     _config: null,
     _discovering: null,
@@ -119,228 +90,85 @@ const API = {
         }
     },
 
-    get categories() { return CATEGORIES },
-    get assets() { return ASSETS },
-
-    // ==== Usuários (API ou localStorage) ====
-
-    async register(nome, usuario, celular) {
-        if (this.isConfigured()) {
-            return this.request('POST', '/register', { nome, usuario, celular });
-        }
-        const users = this._getUsers();
-        const digito = celular.replace(/\D/g, '');
-        const slug = usuario.replace(/[^a-z0-9._-]/g, '').toLowerCase().trim();
-        if (!slug) return { error: 'Usuário inválido' };
-        if (users.find(u => u.usuario === slug)) return { error: 'Usuário já existe' };
-        if (users.find(u => u.celular === digito)) return { error: 'Celular já cadastrado' };
-        const code = String(Math.floor(100000 + Math.random() * 900000));
-        const user = {
-            id: Date.now(), nome: nome.replace(/<[^>]*>/g, '').trim(),
-            usuario: slug, celular: digito, senha: digito.slice(-4),
-            confirmCode: code, confirmed: false,
-            createdAt: new Date().toISOString()
-        };
-        users.push(user);
-        this._saveUsers(users);
-        return { user, code };
+    // ====== Transações ======
+    async getTransacoes(mes) {
+        const r = await this.request('GET', `/api/transacoes/${mes}`);
+        return r.error ? [] : r;
     },
 
-    async confirm(celular, code) {
-        if (this.isConfigured()) {
-            return this.request('POST', '/confirm', { celular, code });
-        }
-        const users = this._getUsers();
-        const u = users.find(u => u.celular === celular.replace(/\D/g, ''));
-        if (!u) return { error: 'Usuário não encontrado' };
-        if (u.confirmed) return { error: 'Usuário já confirmado' };
-        if (u.confirmCode !== code.trim()) return { error: 'Código inválido' };
-        u.confirmed = true;
-        this._saveUsers(users);
-        return { success: true };
+    async addTransacao(data) {
+        return this.request('POST', '/transacoes', data);
     },
 
-    async login(usuario, senha) {
-        if (this.isConfigured()) {
-            const r = await this.request('POST', '/login', { usuario, senha });
-            if (r.user) {
-                const key = r.user._id || r.user.id;
-                DB.set('session_user', r.user);
-                DB.set('session_id', key);
-            }
-            return r;
-        }
-        const users = this._getUsers();
-        const slug = usuario.replace(/[^a-z0-9._-]/g, '').toLowerCase().trim();
-        const u = users.find(u => u.usuario === slug);
-        if (!u) return { error: 'Usuário não encontrado' };
-        if (!u.confirmed) return { error: 'Confirme seu WhatsApp primeiro' };
-        if (u.senha !== senha) return { error: 'Senha incorreta' };
-        DB.set('session_id', u.id);
-        return { user: u };
+    async updateTransacao(id, data) {
+        return this.request('PUT', `/transacoes/${id}`, data);
     },
 
-    async getMe(userId) {
-        if (this.isConfigured()) {
-            const r = await this.request('GET', `/usuarios/me?id=${userId}`);
-            return r.error ? null : r;
-        }
-        return this._getUsers().find(u => u.id === userId) || null;
+    async deleteTransacao(id) {
+        return this.request('DELETE', `/transacoes/${id}`);
     },
 
-    logout() {
-        DB.set('session_id', null);
-        DB.set('session_user', null);
+    // ====== Categorias ======
+    async getCategorias() {
+        const r = await this.request('GET', '/categorias');
+        return r.error ? [] : r;
     },
 
-    getSession() {
-        if (this.isConfigured()) {
-            return DB.get('session_user') || null;
-        }
-        const id = DB.get('session_id');
-        if (!id) return null;
-        return this._getUsers().find(u => u.id === id) || null;
+    async addCategoria(data) {
+        return this.request('POST', '/categorias', data);
     },
 
-    _getUsers() { return DB.get('users') || [] },
-    _saveUsers(u) { DB.set('users', u) },
-
-    // ==== Mensagens (API ou localStorage) ====
-
-    async getMessages(assetId) {
-        if (this.isConfigured()) {
-            const r = await this.request('GET', `/mensagens/${assetId}`);
-            return r.error ? [] : r;
-        }
-        const all = DB.get('posts') || {};
-        return all[assetId] || [];
+    async deleteCategoria(id) {
+        return this.request('DELETE', `/categorias/${id}`);
     },
 
-    async addPost(assetId, userId, userName, message) {
-        const msg = message.replace(/<[^>]*>/g, '').trim();
-        if (!msg) return null;
-        if (this.isConfigured()) {
-            const r = await this.request('POST', '/mensagens', {
-                asset: assetId, userId: String(userId), userName, message: msg
-            });
-            return r.error ? null : r;
-        }
-        const all = DB.get('posts') || {};
-        if (!all[assetId]) all[assetId] = [];
-        const post = {
-            id: Date.now(), userId, userName, message: msg, createdAt: new Date().toISOString()
-        };
-        all[assetId].unshift(post);
-        DB.set('posts', all);
-        return post;
+    // ====== Metas ======
+    async getMetas() {
+        const r = await this.request('GET', '/api/metas/progresso');
+        return r.error ? [] : r;
     },
 
-    async deleteMessage(msgId) {
-        if (this.isConfigured()) {
-            return this.request('DELETE', `/mensagens/${msgId}`);
-        }
-        return { error: 'Modo local não suporta exclusão' };
+    async addMeta(data) {
+        return this.request('POST', '/metas', data);
     },
 
-    // ==== Fóruns dinâmicos ====
-
-    async getForuns() {
-        if (this.isConfigured()) {
-            const r = await this.request('GET', '/foruns');
-            return r.error ? [] : r;
-        }
-        return [];
+    async updateMeta(id, data) {
+        return this.request('PUT', `/metas/${id}`, data);
     },
 
-    async createForum(nome, icone, descricao, categoria) {
-        if (this.isConfigured()) {
-            return this.request('POST', '/foruns', { nome, icone, descricao, categoria });
-        }
-        return { error: 'API não configurada' };
+    async deleteMeta(id) {
+        return this.request('DELETE', `/metas/${id}`);
     },
 
-    async deleteForum(id) {
-        if (this.isConfigured()) {
-            return this.request('DELETE', `/foruns/${id}`);
-        }
-        return { error: 'API não configurada' };
+    // ====== Patrimônio ======
+    async getPatrimonio() {
+        const r = await this.request('GET', '/patrimonio');
+        return r.error ? [] : r;
     },
 
-    // ==== WhatsApp ====
-
-    async sendWhatsApp(celular, mensagem) {
-        if (this.isConfigured()) {
-            return this.request('POST', '/whatsapp/send', { celular, mensagem });
-        }
-        console.log(`[WHATSAPP] Para: ${celular} | ${mensagem}`);
-        return { success: true, note: 'modo local' };
+    async addPatrimonio(data) {
+        return this.request('POST', '/patrimonio', data);
     },
 
-    // ==== APIs externas gratuitas ====
-    async _proxyFetch(path) {
-        if (this.isConfigured()) {
-            const r = await this.request('GET', path);
-            return r.error ? null : r;
-        }
-        return null;
+    async deletePatrimonio(id) {
+        return this.request('DELETE', `/patrimonio/${id}`);
     },
-    async fetchSelic() {
-        const d = await this._proxyFetch('/proxy/bcb/11');
-        if (d?.length) return { valor: parseFloat(d[0].valor || 0).toFixed(2), data: d[0].data || '' };
-        try {
-            const r = await fetch('https://api.bcb.gov.br/dados/serie/bcdata.sgs.11/dados/ultimos/1');
-            const d2 = await r.json();
-            return { valor: parseFloat(d2[0]?.valor || 0).toFixed(2), data: d2[0]?.data || '' };
-        } catch { return null }
+
+    // ====== Resumo / Analytics ======
+    async getResumo(mes) {
+        const r = await this.request('GET', `/api/resumo?mes=${mes}`);
+        return r.error ? null : r;
     },
-    async fetchCDI() {
-        const d = await this._proxyFetch('/proxy/bcb/12');
-        if (d?.length) return { valor: parseFloat(d[0].valor || 0).toFixed(2), data: d[0].data || '' };
-        try {
-            const r = await fetch('https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados/ultimos/1');
-            const d2 = await r.json();
-            return { valor: parseFloat(d2[0]?.valor || 0).toFixed(2), data: d2[0]?.data || '' };
-        } catch { return null }
+
+    async getGastosPorCategoria(mes) {
+        const r = await this.request('GET', `/api/gastos-por-categoria/${mes}`);
+        return r.error ? [] : r;
     },
-    async fetchIPCA() {
-        const d = await this._proxyFetch('/proxy/bcb/433');
-        if (d?.length) return { valor: parseFloat(d[0].valor || 0).toFixed(2), data: d[0].data || '' };
-        try {
-            const r = await fetch('https://api.bcb.gov.br/dados/serie/bcdata.sgs.433/dados/ultimos/1');
-            const d2 = await r.json();
-            return { valor: parseFloat(d2[0]?.valor || 0).toFixed(2), data: d2[0]?.data || '' };
-        } catch { return null }
-    },
-    async _yahooMeta(ticker) {
-        const d = await this._proxyFetch(`/proxy/yahoo/chart/${encodeURIComponent(ticker)}`);
-        return d?.chart?.result?.[0]?.meta || null;
-    },
-    async fetchQuote(ticker) {
-        const meta = await this._yahooMeta(`${ticker}.SA`);
-        if (meta) return {
-            ticker, name: meta.shortName || meta.longName || ticker,
-            price: meta.regularMarketPrice || meta.previousClose || 0,
-            currency: meta.currency || 'BRL',
-            change: meta.chartPreviousClose ? ((meta.regularMarketPrice / meta.chartPreviousClose - 1) * 100).toFixed(2) : 0
-        };
-        return null;
-    },
-    async fetchCrypto(ticker) {
-        const meta = await this._yahooMeta(`${ticker}-USD`);
-        if (meta) return {
-            ticker, name: meta.shortName || ticker, price: meta.regularMarketPrice || 0,
-            change: meta.chartPreviousClose ? ((meta.regularMarketPrice / meta.chartPreviousClose - 1) * 100).toFixed(2) : 0
-        };
-        return null;
-    },
-    async fetchIbovespa() {
-        const meta = await this._yahooMeta('^BVSP');
-        if (meta) return { name: 'Ibovespa', price: meta.regularMarketPrice || 0,
-            change: meta.chartPreviousClose ? ((meta.regularMarketPrice / meta.chartPreviousClose - 1) * 100).toFixed(2) : 0 };
-        return null;
+
+    async getPatrimonioHistorico(limite) {
+        const r = await this.request('GET', `/api/patrimonio/historico?limite=${limite || 12}`);
+        return r.error ? [] : r;
     }
 };
 
 window.API = API;
-window.ASSETS = ASSETS;
-window.CATEGORIES = CATEGORIES;
