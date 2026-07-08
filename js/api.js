@@ -14,6 +14,7 @@ const DB = {
         localStorage.setItem(this.prefix + key, JSON.stringify(val))
     },
     table(name) {
+        const db = this;
         const data = this.get(name) || [];
         return {
             all: () => [...data],
@@ -22,21 +23,21 @@ const DB = {
             push(item) {
                 item._id = Date.now() + Math.floor(Math.random() * 999);
                 data.push(item);
-                this.set(name, data);
+                db.set(name, data);
                 return item;
             },
             update(id, updates) {
                 const idx = data.findIndex(r => r._id === id);
                 if (idx === -1) return null;
                 data[idx] = { ...data[idx], ...updates };
-                this.set(name, data);
+                db.set(name, data);
                 return data[idx];
             },
             delete(id) {
                 const idx = data.findIndex(r => r._id === id);
                 if (idx === -1) return false;
                 data.splice(idx, 1);
-                this.set(name, data);
+                db.set(name, data);
                 return true;
             }
         };
