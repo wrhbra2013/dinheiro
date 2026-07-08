@@ -230,6 +230,8 @@ body {
 .card-patrimonio .card-value { color: var(--income); }
 .card-metas .card-value { color: var(--warning); font-size: 24px; }
 .card-orcamento .card-value { color: var(--success); font-size: 24px; }
+.card-reserva-dash .card-value { color: var(--accent); font-size: 24px; }
+.card-reserva-dash .card-sub { font-size: 11px; }
 
 /* ============ PROGRESS BAR ============ */
 .progress-bar {
@@ -540,7 +542,45 @@ body {
 }
 
 /* ============ RESPONSIVE ============ */
+/* ============ RESERVA DE EMERGÊNCIA ============ */
+.reserva-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 16px;
+}
+.reserva-grid > .card { padding: 20px; }
+.card-reserva-destaque .card-value { color: var(--accent); font-size: 32px; }
+.card-reserva-meses .card-value { color: var(--income); font-size: 32px; }
+.card-reserva-media .card-value { color: var(--warning); font-size: 24px; }
+.card-reserva-meta .card-value { color: var(--accent); font-size: 24px; }
+.reserva-bar { height: 12px; border-radius: 6px; margin-top: 12px; }
+.reserva-bar .progress-fill { border-radius: 6px; }
+.fill-success { background: var(--income); }
+
+.calc-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+.calc-result { grid-column: 1 / -1; }
+.calc-valor {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent);
+    padding: 8px 0;
+}
+.calc-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+
 @media (max-width: 768px) {
+    .reserva-grid { grid-template-columns: 1fr 1fr; }
+    .card-reserva-destaque { grid-column: 1 / -1; }
+    .calc-grid { grid-template-columns: 1fr; }
+}
     .sidebar {
         transform: translateX(-100%);
     }

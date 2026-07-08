@@ -32,6 +32,9 @@
             <button class="nav-item" data-view="orcamento" onclick="navigate('orcamento')">
                 <span class="nav-icon">📋</span> Orçamento
             </button>
+            <button class="nav-item" data-view="reserva" onclick="navigate('reserva')">
+                <span class="nav-icon">🛡️</span> Reserva
+            </button>
             <button class="nav-item" data-view="metas" onclick="navigate('metas')">
                 <span class="nav-icon">🎯</span> Metas
             </button>
@@ -92,6 +95,12 @@
                     <div class="card-label">Orçamento</div>
                     <div class="card-value" id="dash-orcamento-pct">0%</div>
                     <div class="progress-bar"><div class="progress-fill" id="dash-orcamento-bar" style="width:0%"></div></div>
+                </div>
+                <div class="card card-reserva-dash">
+                    <div class="card-label">🛡️ Reserva de Emergência</div>
+                    <div class="card-value" id="dash-reserva-pct">0%</div>
+                    <div class="card-sub" id="dash-reserva-sub">Calculando...</div>
+                    <div class="progress-bar"><div class="progress-fill" id="dash-reserva-bar" style="width:0%"></div></div>
                 </div>
             </div>
 
@@ -159,6 +168,76 @@
             </div>
         </section>
 
+        <!-- ===== RESERVA VIEW ===== -->
+        <section id="view-reserva" class="view">
+            <div class="reserva-grid">
+                <div class="card card-reserva-destaque">
+                    <div class="card-label">🛡️ Fundo de Emergência</div>
+                    <div class="card-value" id="reserva-atual">R$ 0,00</div>
+                    <div class="card-sub">de <strong id="reserva-alvo">R$ 0,00</strong> recomendados</div>
+                    <div class="progress-bar reserva-bar"><div class="progress-fill" id="reserva-bar" style="width:0%"></div></div>
+                </div>
+                <div class="card card-reserva-meses">
+                    <div class="card-label">Meses cobertos</div>
+                    <div class="card-value" id="reserva-meses">0</div>
+                    <div class="card-sub">de <strong id="reserva-meses-alvo">6</strong> meses recomendados</div>
+                </div>
+                <div class="card card-reserva-media">
+                    <div class="card-label">Gasto médio mensal</div>
+                    <div class="card-value" id="reserva-media">R$ 0,00</div>
+                    <div class="card-sub">Com base nos últimos meses</div>
+                </div>
+                <div class="card card-reserva-meta">
+                    <div class="card-label">Progresso da meta</div>
+                    <div class="card-value" id="reserva-pct">0%</div>
+                    <div class="progress-bar"><div class="progress-fill" id="reserva-pct-bar" style="width:0%"></div></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><h3>Metas de Reserva</h3></div>
+                <div class="card-body" id="reserva-metas-list">
+                    <div class="empty-state">Nenhuma meta de reserva cadastrada.
+                        <br><br>
+                        <button class="btn btn-primary" onclick="abrirMetaReserva()">+ Criar Meta de Reserva</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><h3>Calculadora de Reserva</h3></div>
+                <div class="card-body">
+                    <div class="calc-grid">
+                        <div class="form-group">
+                            <label>Gasto médio mensal (R$)</label>
+                            <input type="number" id="calc-media" step="0.01" min="0" placeholder="Calculado automaticamente">
+                        </div>
+                        <div class="form-group">
+                            <label>Meses de reserva desejados</label>
+                            <select id="calc-meses">
+                                <option value="3">3 meses</option>
+                                <option value="6" selected>6 meses</option>
+                                <option value="9">9 meses</option>
+                                <option value="12">12 meses</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Valor atual guardado (R$)</label>
+                            <input type="number" id="calc-atual" step="0.01" min="0" placeholder="0,00">
+                        </div>
+                        <div class="form-group calc-result">
+                            <label>Meta recomendada</label>
+                            <div class="calc-valor" id="calc-resultado">R$ 0,00</div>
+                        </div>
+                    </div>
+                    <div class="calc-actions">
+                        <button class="btn btn-primary" onclick="calcularReserva()">Calcular</button>
+                        <button class="btn btn-secondary" onclick="abrirMetaReservaCalc()">Criar Meta com este valor</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- ===== PATRIMONIO VIEW ===== -->
         <section id="view-patrimonio" class="view">
             <div class="view-toolbar">
@@ -184,20 +263,40 @@
         <!-- ===== CONFIG VIEW ===== -->
         <section id="view-config" class="view">
             <div class="card">
-                <div class="card-header"><h3>Configuração</h3></div>
+                <div class="card-header"><h3>Sobre</h3></div>
                 <div class="card-body">
                     <div class="form-group">
-                        <label>Token da API</label>
-                        <input type="text" id="config-token" readonly>
-                    </div>
-                    <div class="form-group">
-                        <label>URL da API</label>
-                        <input type="text" id="config-url" readonly>
-                    </div>
-                    <div class="form-group">
                         <label>Versão</label>
-                        <input type="text" value="2.0.0 — Orçamento e Patrimônio" readonly>
+                        <input type="text" value="3.0.0 — Estática (localStorage)" readonly>
                     </div>
+                    <div class="form-group">
+                        <label>Armazenamento</label>
+                        <input type="text" id="config-storage" readonly>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header"><h3>Gerenciar Dados</h3></div>
+                <div class="card-body">
+                    <p style="font-size:13px;color:var(--text2);margin-bottom:16px">
+                        Todos os dados ficam salvos no navegador (localStorage).
+                        Use os botões abaixo para exportar ou importar seus dados.
+                    </p>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap">
+                        <button class="btn btn-primary" onclick="exportarDados()">📥 Exportar Dados</button>
+                        <button class="btn btn-secondary" onclick="importarDados()">📤 Importar Dados</button>
+                        <button class="btn btn-danger" onclick="limparDados()">🗑️ Limpar Tudo</button>
+                    </div>
+                    <input type="file" id="import-file" accept=".json" style="display:none" onchange="processarImport(event)">
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header"><h3>Dica</h3></div>
+                <div class="card-body">
+                    <p style="font-size:13px;color:var(--text2)">
+                        💡 Para não perder seus dados, faça exportações periódicas.
+                        O navegador pode limpar o localStorage se você limpar os dados de navegação.
+                    </p>
                 </div>
             </div>
         </section>

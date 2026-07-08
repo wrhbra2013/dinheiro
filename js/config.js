@@ -1,5 +1,2 @@
-// Dica de URL para autodescoberta da API
-// O token é obtido automaticamente via GET /api-key
-window.API_CONFIG = {
-    baseUrl: 'https://api.projetosdinamicos.com.br/dinheiro/api/'
-};
+// Dinheiro v3.0.0 — Aplicação 100% estática (localStorage)
+// Nenhuma API externa necessária. Todos os dados ficam no navegador.

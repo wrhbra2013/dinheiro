@@ -20,14 +20,9 @@ function fmtValor(v) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-    await API.discover();
-    const user = DB.get('session_user') || { nome: 'Admin' };
+    const user = { nome: 'Admin' };
     document.getElementById('user-avatar').textContent = user.nome.charAt(0).toUpperCase();
     document.getElementById('user-name-sidebar').textContent = user.nome;
-    if (API.isConfigured()) {
-        document.getElementById('config-token').value = API.token;
-        document.getElementById('config-url').value = API.baseUrl;
-    }
     navigate('dashboard');
 });
 
@@ -45,7 +40,7 @@ function navigate(view) {
     document.querySelectorAll('.view').forEach(el => {
         el.classList.toggle('active', el.id === 'view-' + view);
     });
-    const titles = { dashboard: 'Dashboard', transacoes: 'Transações', orcamento: 'Orçamento', metas: 'Metas', patrimonio: 'Patrimônio', config: 'Configuração' };
+    const titles = { dashboard: 'Dashboard', transacoes: 'Transações', orcamento: 'Orçamento', reserva: 'Reserva de Emergência', metas: 'Metas', patrimonio: 'Patrimônio', config: 'Configuração' };
     document.getElementById('page-title').textContent = titles[view] || 'Dashboard';
     document.getElementById('month-picker').style.display = view === 'config' ? 'none' : 'flex';
     document.getElementById('sidebar').classList.remove('open');
@@ -59,8 +54,10 @@ function renderView() {
         case 'dashboard': renderDashboard(); break;
         case 'transacoes': renderTransacoes(); break;
         case 'orcamento': renderOrcamento(); break;
+        case 'reserva': renderReserva(); break;
         case 'metas': renderMetas(); break;
         case 'patrimonio': renderPatrimonio(); break;
+        case 'config': atualizarInfoStorage(); break;
         default: renderDashboard();
     }
 }
@@ -103,6 +100,7 @@ async function renderDashboard() {
     }
     renderDashCategorias(mes);
     renderDashMetas();
+    renderDashReserva();
 }
 
 async function calcOrcamentoProgresso(mes) {
@@ -381,7 +379,8 @@ async function addMetaProgresso(id) {
         valor_alvo: meta.valor_alvo,
         valor_atual: String(novoAtual),
         data_alvo: meta.data_alvo,
-        icone: meta.icone
+        icone: meta.icone,
+        tipo_meta: meta.tipo_meta || 'geral'
     });
     renderMetas();
     renderDashboard();
@@ -400,6 +399,13 @@ function openMetaModal() {
             <div class="form-group">
                 <label>Nome da Meta</label>
                 <input type="text" id="meta-nome" placeholder="Ex: Reserva de Emergência" required>
+            </div>
+            <div class="form-group">
+                <label>Tipo</label>
+                <select id="meta-tipo" required>
+                    <option value="geral">Geral</option>
+                    <option value="reserva">🛡️ Reserva de Emergência</option>
+                </select>
             </div>
             <div class="form-group">
                 <label>Valor Alvo (R$)</label>
@@ -426,6 +432,7 @@ async function salvarMeta(e) {
     e.preventDefault();
     const data = {
         nome: document.getElementById('meta-nome').value.trim(),
+        tipo_meta: document.getElementById('meta-tipo').value,
         valor_alvo: document.getElementById('meta-alvo').value,
         valor_atual: document.getElementById('meta-atual').value || '0',
         data_alvo: document.getElementById('meta-data').value || '',
@@ -519,4 +526,230 @@ async function salvarPatrimonio(e) {
     closeModal();
     renderPatrimonio();
     renderDashboard();
+}
+
+// ====== RESERVA DE EMERGÊNCIA ======
+async function renderReserva() {
+    const data = await API.getReserva();
+    if (!data) return;
+
+    document.getElementById('reserva-atual').textContent = fmtValor(data.valor_atual);
+    document.getElementById('reserva-alvo').textContent = fmtValor(data.valor_alvo);
+    document.getElementById('reserva-meses').textContent = data.meses_cobertos;
+    document.getElementById('reserva-meses-alvo').textContent = data.meses_desejados;
+    document.getElementById('reserva-media').textContent = fmtValor(data.media_gastos_mensais);
+    document.getElementById('reserva-pct').textContent = data.progresso + '%';
+    document.getElementById('reserva-pct-bar').style.width = data.progresso + '%';
+
+    const bar = document.getElementById('reserva-bar');
+    bar.style.width = Math.min(data.progresso, 100) + '%';
+    bar.className = 'progress-fill' + (data.progresso >= 100 ? ' fill-success' : data.progresso >= 50 ? ' fill-warning' : '');
+
+    // Metas de reserva
+    const metas = await API.getMetas();
+    const metasReserva = metas.filter(m => m.tipo_meta === 'reserva');
+    const container = document.getElementById('reserva-metas-list');
+
+    if (!metasReserva.length) {
+        container.innerHTML = `<div class="empty-state">Nenhuma meta de reserva cadastrada.
+            <br><br>
+            <button class="btn btn-primary" onclick="abrirMetaReserva()">+ Criar Meta de Reserva</button>
+        </div>`;
+        return;
+    }
+
+    container.innerHTML = metasReserva.map(m => `
+        <div class="meta-card">
+            <div class="meta-card-header">
+                <span class="meta-icon">${m.icone}</span>
+                <div class="meta-card-info">
+                    <strong>${esc(m.nome)}</strong>
+                    <small>${fmtValor(m.valor_atual)} / ${fmtValor(m.valor_alvo)}</small>
+                </div>
+                <span class="meta-pct-big">${m.progresso}%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width:${m.progresso}%"></div></div>
+            <div class="meta-card-actions">
+                <button class="btn btn-sm btn-secondary" onclick="addReservaProgresso(${m._id})">+ Depositar</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteMeta(${m._id})">Excluir</button>
+            </div>
+        </div>
+    `).join('');
+
+    // Preencher calculadora
+    document.getElementById('calc-media').value = data.media_gastos_mensais || '';
+    document.getElementById('calc-atual').value = data.valor_atual || '';
+    calcularReserva();
+}
+
+async function renderDashReserva() {
+    const data = await API.getReserva();
+    if (!data) return;
+    document.getElementById('dash-reserva-pct').textContent = data.progresso + '%';
+    document.getElementById('dash-reserva-bar').style.width = Math.min(data.progresso, 100) + '%';
+    document.getElementById('dash-reserva-sub').textContent =
+        `${fmtValor(data.valor_atual)} / ${fmtValor(data.valor_alvo)} — ${data.meses_cobertos}m cobertos`;
+}
+
+async function addReservaProgresso(id) {
+    const valor = prompt('Quanto deseja depositar na reserva? (R$)');
+    if (!valor || isNaN(valor)) return;
+    const metas = await API.getMetas();
+    const meta = metas.find(m => m._id === id);
+    if (!meta) return;
+    const novoAtual = (meta.valor_atual || 0) + parseFloat(valor);
+    await API.updateMeta(id, {
+        nome: meta.nome,
+        valor_alvo: meta.valor_alvo,
+        valor_atual: String(novoAtual),
+        data_alvo: meta.data_alvo,
+        icone: meta.icone,
+        tipo_meta: 'reserva'
+    });
+    renderReserva();
+    renderDashboard();
+}
+
+function abrirMetaReserva() {
+    openModal('Nova Meta — Reserva de Emergência', `
+        <form onsubmit="salvarMetaReserva(event)" class="modal-form">
+            <div class="form-group">
+                <label>Nome da Meta</label>
+                <input type="text" id="mr-nome" value="Reserva de Emergência" required>
+            </div>
+            <div class="form-group">
+                <label>Valor Alvo (R$)</label>
+                <input type="number" id="mr-alvo" step="0.01" min="0.01" placeholder="Calcular automaticamente">
+            </div>
+            <div class="form-group">
+                <label>Valor Atual (R$)</label>
+                <input type="number" id="mr-atual" step="0.01" min="0" placeholder="0,00" value="0">
+            </div>
+            <div class="form-group">
+                <label>Ícone (emoji)</label>
+                <input type="text" id="mr-icone" value="🛡️" maxlength="2">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Salvar Meta de Reserva</button>
+        </form>
+    `);
+    // Preencher com valor sugerido
+    API.getReserva().then(d => {
+        if (d && d.valor_alvo > 0) {
+            document.getElementById('mr-alvo').value = d.valor_alvo.toFixed(2);
+            document.getElementById('mr-alvo').placeholder = `Sugerido: ${fmtValor(d.valor_alvo)}`;
+        }
+    });
+}
+
+async function salvarMetaReserva(e) {
+    e.preventDefault();
+    const data = {
+        nome: document.getElementById('mr-nome').value.trim(),
+        valor_alvo: document.getElementById('mr-alvo').value,
+        valor_atual: document.getElementById('mr-atual').value || '0',
+        icone: document.getElementById('mr-icone').value || '🛡️',
+        tipo_meta: 'reserva'
+    };
+    await API.addMeta(data);
+    closeModal();
+    renderReserva();
+    renderDashboard();
+}
+
+function abrirMetaReservaCalc() {
+    const alvo = document.getElementById('calc-resultado').dataset.valor;
+    if (!alvo || parseFloat(alvo) <= 0) {
+        alert('Calcule primeiro o valor da reserva.');
+        return;
+    }
+    abrirMetaReserva();
+    setTimeout(() => {
+        const alvoInput = document.getElementById('mr-alvo');
+        if (alvoInput) alvoInput.value = alvo;
+    }, 100);
+}
+
+function calcularReserva() {
+    const media = parseFloat(document.getElementById('calc-media').value) || 0;
+    const meses = parseInt(document.getElementById('calc-meses').value) || 6;
+    const atual = parseFloat(document.getElementById('calc-atual').value) || 0;
+    const alvo = media * meses;
+    const el = document.getElementById('calc-resultado');
+    el.textContent = fmtValor(alvo);
+    el.dataset.valor = alvo > 0 ? alvo.toFixed(2) : '0';
+}
+
+// ====== Gerenciamento de Dados ======
+function atualizarInfoStorage() {
+    const el = document.getElementById('config-storage');
+    if (!el) return;
+    let total = 0;
+    for (const key in localStorage) {
+        if (key.startsWith('dinheiro_')) {
+            total += localStorage[key].length;
+        }
+    }
+    const kb = (total / 1024).toFixed(1);
+    const tabelas = ['transacoes', 'categorias', 'metas', 'patrimonio'];
+    const contagens = tabelas.map(t => {
+        const data = DB.get(t) || [];
+        return `${t}: ${data.length}`;
+    });
+    el.value = `${kb} KB usado — ${contagens.join(' | ')}`;
+}
+
+function exportarDados() {
+    const dados = {};
+    for (const key in localStorage) {
+        if (key.startsWith('dinheiro_')) {
+            dados[key] = localStorage.getItem(key);
+        }
+    }
+    const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dinheiro-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function importarDados() {
+    document.getElementById('import-file').click();
+}
+
+function processarImport(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const dados = JSON.parse(e.target.result);
+            let count = 0;
+            for (const key in dados) {
+                if (key.startsWith('dinheiro_')) {
+                    localStorage.setItem(key, dados[key]);
+                    count++;
+                }
+            }
+            alert(`${count} registros importados com sucesso!`);
+            navigate(currentView);
+        } catch {
+            alert('Arquivo inválido. Selecione um arquivo de backup JSON.');
+        }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+}
+
+function limparDados() {
+    if (!confirm('Tem certeza? Todos os dados locais serão perdidos!')) return;
+    if (!confirm('Confirma a exclusão de TODOS os dados?')) return;
+    const keys = [];
+    for (const key in localStorage) {
+        if (key.startsWith('dinheiro_')) keys.push(key);
+    }
+    keys.forEach(k => localStorage.removeItem(k));
+    alert('Dados limpos. A página será recarregada.');
+    location.reload();
 }

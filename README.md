@@ -1,50 +1,41 @@
-# Dinheiro — Orçamento e Formação de Patrimônio Pessoal
+# Dinheiro — Orçamento Pessoal e Reserva de Emergência
 
-Aplicação web para controle de orçamento mensal, metas financeiras e acompanhamento de patrimônio pessoal.
+Aplicação web 100% estática para controle de **orçamento pessoal** e **formação de reserva de emergência**. Todos os dados ficam salvos no navegador (localStorage).
 
 ## Funcionalidades
 
-- **Dashboard** — Visão geral com saldo do mês, patrimônio líquido, progresso de metas e gastos por categoria
+- **Dashboard** — Visão geral com saldo do mês, patrimônio líquido, progresso de metas, orçamento e reserva de emergência
 - **Transações** — Registrar receitas e despesas mensais com categorias
 - **Orçamento** — Definir limites mensais por categoria e acompanhar progresso
-- **Metas** — Cadastrar metas financeiras com valor alvo e acompanhamento de progresso
+- **Reserva de Emergência** — Calcula automaticamente o valor ideal (6x gasto médio), acompanha meses cobertos e progresso
+- **Metas** — Cadastrar metas financeiras (gerais ou de reserva) com valor alvo
 - **Patrimônio** — Registrar ativos e passivos para cálculo do patrimônio líquido
+- **Exportar/Importar dados** — Backup completo em JSON
+
+## Como usar
+
+Acesse diretamente pelo navegador — nenhuma instalação necessária.
+
+```
+https://api.projetosdinamicos.com.br/dinheiro/
+```
+
+Ou baixe os arquivos e abra `index.html` no navegador.
+
+## Instalação em servidor
+
+```bash
+sudo bash install_static.sh
+```
+
+O script copia os arquivos para `/var/www/dinheiro` e configura o Nginx.
 
 ## Arquitetura
 
-- **Backend**: Node.js + Express + PostgreSQL (Docker)
-- **Frontend**: HTML/CSS/JS puro (vanilla)
-- **API REST** com criação dinâmica de tabelas via POST
-- **Infraestrutura**: Docker Compose, Nginx (proxy reverso)
+- **Frontend**: HTML/CSS/JS puro (vanilla), sem frameworks
+- **Armazenamento**: localStorage do navegador
+- **Backend**: Nenhum — aplicação 100% estática
 
-## Instalação
+## Licença
 
-```bash
-sudo bash install_dinheiro.sh
-```
-
-O script configura Docker, PostgreSQL, Nginx e faz deploy da API.
-
-## API
-
-Todas as tabelas são criadas dinamicamente ao receber o primeiro POST.
-
-### Endpoints públicos
-- `GET /` — Status
-- `GET /health` — Health check
-- `GET /api-key` — Descobre o token
-
-### Endpoints analíticos
-- `GET /api/resumo?mes=2026-07` — Resumo do mês
-- `GET /api/transacoes/2026-07` — Transações do mês
-- `GET /api/gastos-por-categoria/2026-07` — Gastos agrupados
-- `GET /api/metas/progresso` — Progresso das metas
-- `GET /api/patrimonio/historico` — Histórico de patrimônio
-
-### CRUD dinâmico
-- `GET /:tabela` — Listar registros
-- `POST /:tabela` — Criar registro (cria tabela/colunas automaticamente)
-- `PUT /:tabela/:id` — Atualizar registro
-- `DELETE /:tabela/:id` — Excluir registro
-
-Tabelas principais: `transacoes`, `categorias`, `metas`, `patrimonio`, `usuarios`
+MIT
